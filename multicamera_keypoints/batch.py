@@ -17,6 +17,8 @@ from multicamera_keypoints.file_utils import find_files_from_pattern
 
 
 def format_time_from_sec(seconds):
+    """Convert seconds to HH:MM:SS format
+    """
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     seconds = seconds % 60
@@ -24,6 +26,23 @@ def format_time_from_sec(seconds):
 
 
 def prepare_batch(project_dir, processing_steps=None, recalculate=False):
+    """Prepare a batch script for each processing step.
+
+    Parameters
+    ----------
+    project_dir : str
+        Path to the project directory
+
+    processing_steps : list of str
+        List of processing steps to run. 
+
+    recalculate : bool
+        If True, recalculate the number of frames in each video.
+
+    Returns
+    -------
+    None
+    """
     # Load the project config
     project_dir = os.path.abspath(project_dir)
     config = load_config(project_dir)
@@ -100,7 +119,33 @@ def _make_slurm_cmd(
     slurm_out_prefix,
     **kwargs,
 ):
-    """Generate the slurm portion of the script."""
+    """Generate an sbatch command for slurm.
+
+    Parameters
+    ----------
+    time : str
+        Time to request for the job, in HH:MM:SS format
+
+    gpu : bool
+        Whether to request a gpu
+
+    mem : str
+        Memory to request for the job, e.g. "8GB"
+
+    ncpus : int
+        Number of cpus to request for the job
+
+    slurm_out_dir : str
+        Path to the directory to save slurm output files
+
+    slurm_out_prefix : str
+        Prefix for the slurm output files
+
+    Returns
+    -------
+    slurm_str : str
+        The sbatch command
+    """
 
     if gpu:
         partition = "gpu_quad"
@@ -129,7 +174,24 @@ def _make_wrap_cmd(
     conda_env,
     modules=['gcc/9.2.0', 'ffmpeg'],
 ):
-    """Generate the wrap portion of the script."""
+    """Generate the wrap portion of an sbatch command.
+
+    Parameters
+    ----------
+    func_path : str
+        Path to the function to run
+
+    conda_env : str
+        Name of the conda environment to activate
+
+    modules : list, optional
+        List of modules to load, by default ['gcc/9.2.0', 'ffmpeg']
+
+    Returns
+    -------
+    wrap_str : str
+        The wrap portion of the sbatch command
+    """
 
     module_load_str = " ".join([f"module load {module};"for module in modules])
     wrap_str = (
@@ -145,12 +207,29 @@ def _make_wrap_cmd(
 def run_batch(project_dir, processing_step, shell_script=None):
     """Run the most recent batch script for a processing step, or a user-specified script.
 
-    Arguments:
-        project_dir {str} -- path to the project directory
-        processing_step {str} -- step of keypoint processing to run
+    Notes:
+        -- This function assesses recency by file name, not by file modification time.
+        -- This function only allows one set of jobs to be running at a time (could modify this in the future).
 
-    Keyword Arguments:
-        shell_script {str} -- script to run instead of the default (default: {None})
+    Parameters
+    ----------
+    project_dir : str
+        Path to the project directory
+
+    processing_step : str
+        Step of keypoint processing to run
+
+    shell_script : str, optional
+        If given, this script is run directly, instead of looking for the most recent script.
+
+    Raises
+    ------
+    ValueError
+        If the processing step is not recognized
+    
+    Returns
+    -------
+    None
     """
     # Load the project config
     project_dir = os.path.abspath(project_dir)
@@ -193,6 +272,28 @@ def run_batch(project_dir, processing_step, shell_script=None):
 
 
 def cancel_batch(project_dir, processing_step, shell_script=None):
+    """Cancel the most recent batch script for a processing step, or a user-specified script.
+
+    Parameters
+    ----------
+    project_dir : str
+        Path to the project directory
+
+    processing_step : str
+        Step of keypoint processing to cancel
+
+    shell_script : str, optional
+        If given, this script is cancelled directly, instead of looking for the most recent script.
+
+    Raises
+    ------
+    ValueError
+        If the processing step is not recognized
+
+    Returns
+    -------
+    None
+    """
     # Load the project config
     project_dir = os.path.abspath(project_dir)
     config = load_config(project_dir)

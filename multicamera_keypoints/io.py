@@ -30,6 +30,33 @@ config_comments = {
 config_name = "keypoint_config.yml"
 
 def _build_yaml(sections, comments):
+    """Build a yaml file from a list of sections and comments.
+
+    Structure of the yaml file will look like this:
+    ```
+    #==================== SECTION_TITLE ====================#
+    SECTION_TITLE:
+        key: value
+        subsection_key:
+            # Comment
+            nested_key: nested_value
+    ```
+
+    Parameters
+    ----------
+    sections : list of tuples
+        Each tuple is a section of the yaml file. The first element is the
+        section title, and the second element is a dictionary of key-value
+        pairs.
+
+    comments : dict
+        A dictionary of comments for each key in the yaml file.
+
+    Returns
+    -------
+    text : str
+        The yaml file as a string.
+    """
     text_blocks = []
     for title, data in sections:
         centered_title = f" {title} ".center(50, "=")
@@ -54,8 +81,15 @@ def generate_config(project_dir, non_default_config=None, overwrite=False):
     project_dir: str
         A file `config.yml` will be generated in this directory.
 
-    kwargs
-        Custom project settings.
+    non_default_config: dict, optional
+        A dictionary of non-default settings. See below for details.
+
+    overwrite: bool, optional
+        Whether to overwrite an existing config file.
+
+    Returns
+    -------
+    None
     """
 
     # Prevent overwriting existing config file
@@ -147,6 +181,9 @@ def generate_config(project_dir, non_default_config=None, overwrite=False):
 
 
 def check_config_validity(config):
+    """Check that the config file is valid. This includes checking that
+    paths exist and that conda environments exist.
+    """
 
     if isinstance(config, str):
         config = load_config(config)
@@ -214,6 +251,21 @@ def load_config(project_dir, check_if_valid=True):
 
 def update_config(project_dir, new_config, verbose=True):
     """Update the config file.
+
+    Parameters
+    ----------
+    project_dir: str
+        Directory containing the config file
+
+    new_config: dict
+        Dictionary of new config values
+
+    verbose: bool, default=True
+        Print out the updated values
+
+    Returns
+    -------
+    None
     """
     def recursive_update(config, updates):
         for key, value in updates.items():

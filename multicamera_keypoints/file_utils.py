@@ -24,6 +24,8 @@ def filename_from_path(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 def to_snake_case(string):
+    """Convert a string to snake case (lowercase, and underscores instead of spaces or dashes)
+    """
     string = string.strip('\n\r\t ')
     string = string.replace('-', '_')
     string = string.replace(' ', '_')
@@ -34,18 +36,32 @@ def find_files_from_pattern(path, pattern, exclude_patterns=None, n_expected=1, 
     """Find a given number of files on a given path, matching a particular glob pattern. 
     Raises an error if wrong number of files match, unless error_behav='pass'.
 
-    Arguments:
-        path {str} -- path to check
-        pattern {str} -- passed to glob.glob
-    Keyword Arguments:
-        exclude_patterns {list(str)} -- if any of these patterns is in found file names, exclude them
-        n_expected {int} -- number of files expected to match pattern (default: {1})
-        error_behav {str} -- if 'raise', raises errors; if 'pass', return None for no files, or the whole list for multiple.
-    Raises:
-        DataProcessingError -- if more than one file matching the pattern exists
+    Parameters
+    ----------
+    path : str
+        Path to check
+    
+    pattern : str
+        Passed to glob.glob
 
-    Returns:
-        str -- path to matching file (or None if no file)
+    exclude_patterns : list(str), optional
+        If any of these patterns is in found file names, exclude them
+
+    n_expected : int, optional
+        Number of files expected to match pattern (default: 1)
+
+    error_behav : str, optional
+        If 'raise', raises errors; if 'pass', return None for no files, or the whole list for multiple (default: "raise").
+
+    Raises
+    ------
+        GreaterThanExpectedMatchingFileError: If more than n_expected files match pattern
+        NoMatchingFilesError: If no files match pattern
+
+    Returns
+    -------
+    list(str) or None
+
     """
     if exclude_patterns is None:
         exclude_patterns = []
