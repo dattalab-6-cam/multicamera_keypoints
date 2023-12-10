@@ -27,6 +27,7 @@ config_comments = {
         "keypoint_colormap": "colormap used for visualization; see `matplotlib.cm.get_cmap` for options",
     }
 
+config_name = "keypoint_config.yml"
 
 def _build_yaml(sections, comments):
     text_blocks = []
@@ -58,7 +59,7 @@ def generate_config(project_dir, non_default_config=None, overwrite=False):
     """
 
     # Prevent overwriting existing config file
-    config_path = join(project_dir, "config.yml")
+    config_path = join(project_dir, config_name)
     if exists(config_path) and not overwrite:
         raise ValueError(f"Config file already exists at {config_path}. Use `overwrite=True` to overwrite.")
 
@@ -200,7 +201,7 @@ def load_config(project_dir, check_if_valid=True):
     -------
     config: dict
     """
-    config_path = os.path.join(project_dir, "config.yml")
+    config_path = os.path.join(project_dir, config_name)
 
     with open(config_path, "r") as stream:
         config = yaml.safe_load(stream)
@@ -212,7 +213,7 @@ def load_config(project_dir, check_if_valid=True):
 
 
 def update_config(project_dir, new_config, verbose=True):
-    """Update the config file stored at `project_dir/config.yml`.
+    """Update the config file.
     """
     def recursive_update(config, updates):
         for key, value in updates.items():
@@ -231,6 +232,6 @@ def update_config(project_dir, new_config, verbose=True):
     )
     config = recursive_update(config, new_config)
     sections = [(k, v) for k,v in config.items()]
-    with open(os.path.join(project_dir, "config.yml"), "w") as f:
+    with open(os.path.join(project_dir, config_name), "w") as f:
         f.write(_build_yaml(sections, config_comments))
     time.sleep(0.1)  # wait for file to be written
