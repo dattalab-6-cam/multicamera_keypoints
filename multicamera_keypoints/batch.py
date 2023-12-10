@@ -15,6 +15,7 @@ from multicamera_keypoints.vid_utils import count_frames
 from multicamera_keypoints.io import load_config, update_config
 from multicamera_keypoints.file_utils import find_files_from_pattern
 
+
 def format_time_from_sec(seconds):
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
@@ -48,7 +49,7 @@ def prepare_batch(project_dir, processing_steps=None, recalculate=False):
             {step: {"slurm_params": {
                 "time": format_time_from_sec(time_sec),
             }}},
-            verbose=False
+            verbose=False,
         )
 
     # Make a directory to hold files relevant to each proc step
@@ -67,7 +68,7 @@ def prepare_batch(project_dir, processing_steps=None, recalculate=False):
         )
 
     # Generate the slurm scripts
-    time.sleep(2)
+    time.sleep(1)
     config = load_config(project_dir)
     for step in processing_steps:
         slurm_cmd = _make_slurm_cmd(
@@ -155,22 +156,27 @@ def run_batch(project_dir, processing_step, shell_script=None):
     project_dir = os.path.abspath(project_dir)
     config = load_config(project_dir)
 
-    # Find the correct slurm script
     if shell_script is None:
+        # Find the latest slurm script in the directory
         shell_scripts = find_files_from_pattern(
             config[processing_step]["slurm_params"]["step_dir"],
             f"{processing_step}_batch_*.sh",
             error_behav="pass")
-        shell_script_to_run = sorted(shell_scripts)[-1]
+        if isinstance(shell_scripts, list):
+            shell_script_to_run = sorted(shell_scripts)[-1]
+        elif isinstance(shell_scripts, str):
+            shell_script_to_run = shell_scripts
+        top_level = processing_step
     else:
         shell_script_to_run = shell_script
+        top_level = shell_script
 
     # Make sure jobs aren't already running
     # TODO: allow user to do parameter scans?
-    if "jobs_in_progress" in config[processing_step]["slurm_params"]:
-        jip = config[processing_step]["slurm_params"]["jobs_in_progress"]
+    if top_level in config and "jobs_in_progress" in config[top_level]["slurm_params"]:
+        jip = config[top_level]["slurm_params"]["jobs_in_progress"]
         if jip:
-            print(f"Jobs already running for {processing_step}: {jip}")
+            print(f"Jobs already running for {top_level}: {jip}")
             return
 
     # Run the shell script
@@ -179,14 +185,9 @@ def run_batch(project_dir, processing_step, shell_script=None):
     out = os.popen(f'{shell_script_to_run}').read()
     print(out)
 
+    # Update the config with the list of running jobs
     submitted_jobs = re.findall(r"Submitted batch job (\d+)", out)
-    
-    if shell_script is None:
-        print(processing_step)
-        update_config(project_dir, {processing_step: {"slurm_params": {"jobs_in_progress": submitted_jobs}}})
-    else:
-        print(shell_script_to_run)
-        update_config(project_dir, {shell_script_to_run: {"slurm_params": {"jobs_in_progress": submitted_jobs}}})
+    update_config(project_dir, {top_level: {"slurm_params": {"jobs_in_progress": submitted_jobs}}})
 
     return
 
@@ -203,6 +204,7 @@ def cancel_batch(project_dir, processing_step, shell_script=None):
     # Cancel the jobs
     for job in config[top_level]["slurm_params"]["jobs_in_progress"]:
         os.system(f'scancel {job}')
+        print(f"Cancelled {job}")
 
     # Update the config
     update_config(project_dir, {top_level: {"slurm_params": {"jobs_in_progress": []}}}, verbose=False)
