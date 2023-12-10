@@ -28,6 +28,16 @@ def format_time_from_sec(seconds):
 def prepare_batch(project_dir, processing_steps=None, recalculate=False):
     """Prepare a batch script for each processing step.
 
+    This function is fairly agnostic to the specific processing step going on.
+    It takes care of:
+        -- figuring out how long to run the job for
+        -- making sure your directories are set up correctly
+        -- generating an sbatch command for each video.
+
+    The step-specific code is currently in io.generate_config(),
+    where, for each step, there is a hard-coded python script
+    and most of their arguments.
+
     Parameters
     ----------
     project_dir : str
@@ -50,15 +60,11 @@ def prepare_batch(project_dir, processing_steps=None, recalculate=False):
     if processing_steps is None:
         raise ValueError("Please specify at least one processing step to run")
 
-    # Calculate how much time needed for each session
+    # Find nframes in the videos
     if "nframes" not in config["VID_INFO"]["top"] or recalculate:
         nframes = count_frames(config["VID_INFO"]["top"]["video_path"])
     else:
         nframes = config["VID_INFO"]["top"]["nframes"]
-
-
-    # processing_steps = ["CENTERNET"]
-    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Calculate how much time needed for each step of processing
     for step in processing_steps:
@@ -88,6 +94,7 @@ def prepare_batch(project_dir, processing_steps=None, recalculate=False):
 
     # Generate the slurm scripts
     time.sleep(1)
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     config = load_config(project_dir)
     for step in processing_steps:
         slurm_cmd = _make_slurm_cmd(
