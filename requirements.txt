@@ -1,0 +1,10 @@
+av
+h5py
+matplotlib
+numpy
+opencv-python
+vidio
+torch  # version??
+tqdm
+yaml
+
