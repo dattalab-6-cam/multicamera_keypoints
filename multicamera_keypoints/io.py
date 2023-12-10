@@ -183,6 +183,15 @@ def generate_config(project_dir, non_default_config=None, overwrite=False):
 def check_config_validity(config):
     """Check that the config file is valid. This includes checking that
     paths exist and that conda environments exist.
+
+    Parameters
+    ----------
+    config: str or dict
+        The config file or a dictionary of the config file.
+
+    Returns
+    -------
+    bool
     """
 
     if isinstance(config, str):
@@ -198,28 +207,35 @@ def check_config_validity(config):
             check = config[top_level]["func_args"]["weights_path"]
             if not os.path.exists(check):
                 error_messages.append(
-                        f"Path to weights does not exist: {check}"
+                        f"CONFIG ERROR: Path to weights does not exist: {check}"
                     )
 
         check = config[top_level]["wrap_params"]["func_path"]
         if not os.path.exists(check):
             error_messages.append(
-                    f"Path to weights does not exist: {check}"
+                    f"CONFIG ERROR: Path to weights does not exist: {check}"
                 )
 
-
-    # Check that conda envs exist
-    if not exists(join(os.environ["CONDA_PREFIX"], "envs", config['CENTERNET']["wrap_params"]["conda_env"])):
-        error_messages.append(
-                f"Conda env does not exist: {config['CENTERNET']['wrap_params']['conda_env']}"
-            )
+        # Check that conda envs exist
+        conda_env_folder = os.path.abspath(join(os.environ["CONDA_EXE"], '../../envs'))
+        if not exists(join(conda_env_folder, config[top_level]["wrap_params"]["conda_env"])):
+            error_messages.append(
+                    f"CONFIG ERROR: Conda env does not exist: {config[top_level]['wrap_params']['conda_env']}"
+                )
 
     # Check that all videos have same length
     nframes = {k: v["nframes"] for k,v in config["VID_INFO"].items()}
     if len(set([nf for nf in nframes.values()])) > 1:
         error_messages.append(
-                f"Videos have different lengths: {nframes}"
+                f"CONFIG ERROR: Videos have different lengths: {nframes}"
             )
+
+    if len(error_messages) == 0:
+        return True
+    for msg in error_messages:
+        print(fill(msg, width=70, subsequent_indent="  "), end="\n\n")
+
+    return False
 
 
 def load_config(project_dir, check_if_valid=True):
@@ -267,6 +283,7 @@ def update_config(project_dir, new_config, verbose=True):
     -------
     None
     """
+    update_msgs = []
     def recursive_update(config, updates):
         for key, value in updates.items():
             if key in config and isinstance(config[key], dict):
@@ -275,7 +292,7 @@ def update_config(project_dir, new_config, verbose=True):
             else:
                 # Otherwise, update the value directly
                 if verbose:
-                    print(f'updating {key} to {value}')
+                    update_msgs.append(f'Updated {key} to {value}')
                 config[key] = value
         return config
 
@@ -284,6 +301,14 @@ def update_config(project_dir, new_config, verbose=True):
     )
     config = recursive_update(config, new_config)
     sections = [(k, v) for k,v in config.items()]
+
+    if not check_config_validity(config):
+        raise ValueError("Config is not valid after update!")
+    else:
+        if verbose:
+            for msg in update_msgs:
+                print(fill(msg, width=70, subsequent_indent="  "), end="\n\n")
+
     with open(os.path.join(project_dir, config_name), "w") as f:
         f.write(_build_yaml(sections, config_comments))
     time.sleep(0.1)  # wait for file to be written
