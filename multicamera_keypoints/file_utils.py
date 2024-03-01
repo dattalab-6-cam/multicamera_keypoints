@@ -1,16 +1,19 @@
 import os
 from glob import glob
 import warnings
-import pdb
+import numpy as np
+import h5py
 
 
 class GreaterThanExpectedMatchingFileError(Exception):
-    def __init__(self,*args,**kwargs):
-        Exception.__init__(self,*args,**kwargs)
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
 
 class NoMatchingFilesError(Exception):
-    def __init__(self,*args,**kwargs):
-        Exception.__init__(self,*args,**kwargs)
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
 
 def filename_from_path(path):
     """Returns just the file name (no extension) from a full path (eg /my/path/to/file.txt returns 'file')
@@ -23,24 +26,27 @@ def filename_from_path(path):
     """
     return os.path.splitext(os.path.basename(path))[0]
 
+
 def to_snake_case(string):
-    """Convert a string to snake case (lowercase, and underscores instead of spaces or dashes)
-    """
-    string = string.strip('\n\r\t ')
-    string = string.replace('-', '_')
-    string = string.replace(' ', '_')
+    """Convert a string to snake case (lowercase, and underscores instead of spaces or dashes)"""
+    string = string.strip("\n\r\t ")
+    string = string.replace("-", "_")
+    string = string.replace(" ", "_")
     string = string.lower()
     return string
 
-def find_files_from_pattern(path, pattern, exclude_patterns=None, n_expected=1, error_behav='raise'):
-    """Find a given number of files on a given path, matching a particular glob pattern. 
+
+def find_files_from_pattern(
+    path, pattern, exclude_patterns=None, n_expected=1, error_behav="raise"
+):
+    """Find a given number of files on a given path, matching a particular glob pattern.
     Raises an error if wrong number of files match, unless error_behav='pass'.
 
     Parameters
     ----------
     path : str
         Path to check
-    
+
     pattern : str
         Passed to glob.glob
 
@@ -77,7 +83,7 @@ def find_files_from_pattern(path, pattern, exclude_patterns=None, n_expected=1, 
 
     # Raise error if no files found
     if len(potential_file_list) == 0:
-        if error_behav=='raise':
+        if error_behav == "raise":
             raise NoMatchingFilesError(f"Found zero files matching {path}/{pattern}!")
         else:
             return None
@@ -85,20 +91,22 @@ def find_files_from_pattern(path, pattern, exclude_patterns=None, n_expected=1, 
     # Exclude requested patterns
     for exclude_pattern in exclude_patterns:
         potential_file_list = [
-            pattern for pattern in potential_file_list if exclude_pattern not in os.path.basename(pattern)
+            pattern
+            for pattern in potential_file_list
+            if exclude_pattern not in os.path.basename(pattern)
         ]
 
     # If now no files, they were removed via pattern, so stop
     if len(potential_file_list) == 0:
         warnings.warn(f"No files remaining in {path} after exclusion.")
-        if error_behav=='raise':
+        if error_behav == "raise":
             raise NoMatchingFilesError(f"Found zero files matching {path}/{pattern}!")
         else:
             return None
 
     # Raise error if still more than one matching file
     if len(potential_file_list) > n_expected:
-        if error_behav=='raise':
+        if error_behav == "raise":
             raise GreaterThanExpectedMatchingFileError(
                 f"Found {len(potential_file_list)} files matching {path}/{pattern} but expected {n_expected}!"
             )
@@ -109,3 +117,36 @@ def find_files_from_pattern(path, pattern, exclude_patterns=None, n_expected=1, 
         return potential_file_list[0]
     else:
         return potential_file_list
+
+
+def is_file_openable_and_contains_data(file):
+    """ Simply check whether a file can be opened, and contains at least some data.
+
+    Parameters
+    ----------
+    file : str
+        Path to h5 file
+
+    Returns
+    -------
+    bool
+        Whether the file can be opened and contains data
+    """
+
+    # Find file extension
+    _, ext = os.path.splitext(file)
+
+    if ext == ".h5":
+        try:
+            with h5py.File(file, "r") as h5f:
+                return len(h5f) > 0
+        except Exception:
+            return False
+
+    elif ext == ".npy":
+        try:
+            arr = np.load(file)
+            return arr.size > 0
+        except Exception as e:
+            print(e)
+            return False
