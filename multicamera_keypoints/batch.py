@@ -173,8 +173,13 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
 
     if processing_steps is None:
         raise ValueError("Please specify at least one processing step to run")
+    elif not all([
+        any([base_step in step for base_step in ["CENTERNET", "HRNET"]])
+        for step in processing_steps
+    ]):
+        raise ValueError("Only CENTERNET and HRNET are supported as video-level processing steps")
 
-    # Prep processing for each video
+    # Calculate processing time for each video if needed
     for vid_name, vid_info in config["VID_INFO"].items():
 
         # If not already done, calculate the number of frames in each video
@@ -222,7 +227,8 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
         for vid_name, vid_info in config["VID_INFO"].items():
 
             # Check all previous steps are done on this video
-            previous_steps = PROCESSING_STEPS[:PROCESSING_STEPS.index(step)]
+            # previous_steps = PROCESSING_STEPS[:PROCESSING_STEPS.index(step)]
+            previous_steps = config[step]["step_dependencies"]
             if not all([f"{prev}_done" in vid_info and vid_info[f"{prev}_done"] for prev in previous_steps]):
                 n_skipped_because_not_ready += 1
                 continue
@@ -249,6 +255,8 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
             out_file = join(config[step]["slurm_params"]["step_dir"], f"{step}_batch_{now}.sh")
             with open(out_file, "a") as f:
                 args_str = " ".join([arg for arg in config[step]["func_args"].values()]).format(**vid_info)
+                # import pdb; pdb.set_trace()
+                args_str = args_str + f" --output_name {config[step]['output_info']['output_name']}"
                 full_cmd = cmd.format(args=args_str)
                 f.write(full_cmd)
                 f.write("\n\n")
@@ -276,8 +284,11 @@ def prepare_session_batch(project_dir, processing_steps=None, increment_time_fra
 
     if processing_steps is None:
         raise ValueError("Please specify at least one processing step to run")
-    elif not all([step in ["TRIANGULATION", "GIMBAL"] for step in processing_steps]):
-        raise ValueError("Only TRIANGULATION and GIMBAL are supported as session-level processing steps")
+    elif not all([
+        any([base_step in step for base_step in ["TRIANGULATION", "GIMBAL"]])
+        for step in processing_steps
+    ]):
+        raise ValueError("Only CENTERNET and HRNET are supported as video-level processing steps")
 
     # Prep processing for each video
     for session_name, session_info in config["SESSION_INFO"].items():
@@ -489,6 +500,7 @@ def _make_wrap_cmd(
 
 def run_batch(project_dir, processing_step, shell_script=None):
     """Run the most recent batch script for a processing step, or a user-specified script.
+    Also automatically runs update_running_jobs() at the end.
 
     Notes:
         -- This function assesses recency by file name, not by file modification time.
@@ -676,22 +688,25 @@ def verify_outputs(project_dir, processing_step, overwrite=False):
     output_name = config[processing_step]["output_info"]["output_name"]
 
     # Find the videos to be checked
-    if processing_step in ["CENTERNET", "HRNET"]:
+    if any([base_step in processing_step  for base_step in ["CENTERNET", "HRNET"]]):
         section = "VID_INFO"
         def output_file_getter(vid_info):
             return vid_info["video_path"].replace("mp4", output_name)
-    elif processing_step in ["TRIANGULATION", "GIMBAL"]:
+    elif any([base_step in processing_step for base_step in ["TRIANGULATION", "GIMBAL"]]):
         section = "SESSION_INFO"
         def output_file_getter(vid_info):
             return join(vid_info["video_dir"], os.path.basename(vid_info["video_dir"]) + "." + output_name)
-    else:
+    elif processing_step == "CALIBRATION":
         section = "CALIBRATION_VIDEOS"
         def output_file_getter(vid_info):
             return join(vid_info["video_dir"], os.path.basename(vid_info["video_dir"]) + "." + output_name)
+    else:
+        raise ValueError("Processing step not recognized")
 
     good_files = []
     incomplete_files = []
     missing_files = []
+    pdb.set_trace()
     for _, vid_info in config[section].items():
 
         output_file = output_file_getter(vid_info)
@@ -724,7 +739,6 @@ def verify_outputs(project_dir, processing_step, overwrite=False):
     return good_files, incomplete_files, missing_files
 
 
-
 def summarize_progress(project_dir):
 
     """Summarize the progress of each processing step.
@@ -742,14 +756,18 @@ def summarize_progress(project_dir):
     project_dir = os.path.abspath(project_dir)
     config = load_config(project_dir)
 
+    all_steps = config.keys()
+
     # Print the progress
-    for step in ["CENTERNET", "HRNET"]:
+    vid_level_steps = [step for step in all_steps if any([base_step in step for base_step in ["CENTERNET", "HRNET"]])]
+    for step in vid_level_steps:
         if step in config:
             n_done = sum([vid_info[f"{step}_done"] for vid_info in config["VID_INFO"].values()])
             n_total = len(config["VID_INFO"])
             print(f"{step}: {n_done}/{n_total} videos done")
 
-    for step in ["TRIANGULATION", "GIMBAL"]:
+    session_level_steps = [step for step in all_steps if any([base_step in step for base_step in ["TRIANGULATION", "GIMBAL"]])]
+    for step in session_level_steps:
         if step in config:
             n_done = sum([vid_info[f"{step}_done"] for vid_info in config["SESSION_INFO"].values()])
             n_total = len(config["SESSION_INFO"])

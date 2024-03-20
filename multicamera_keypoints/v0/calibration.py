@@ -1,8 +1,76 @@
-import multicam_calibration as mcc
-import click
-from os.path import join, exists, basename
+from os.path import basename, join
 
+import click
+import multicam_calibration as mcc
 from o2_utils.selectors import find_files_from_pattern
+
+
+def make_config(
+    PACKAGE_DIR, 
+    sec_per_frame=1.1,
+    output_name_suffix=None,
+    step_dependencies=None,
+):
+    """Create a default config for the calibration step.
+
+    Parameters
+    ----------
+    PACKAGE_DIR : str
+        The directory where the package is installed.
+
+    sec_per_frame : float, optional
+        The number of seconds per frame for the calibration step. The default is 1.1.
+        1.1 = (0.15 * 6) + 0.2  # 0.13 s/fr is a conservative estimate for detection for 6 workers for one vid, times 6 vids per calibration, plus extra time for the extra steps of calibration
+
+    output_name_suffix : str, optional
+        The suffix to add to the output name. The default is None.
+        Example: "v2" --> "camera_params.v2.h5", and the step name 
+        will be "CALIBRATION.v2".
+
+    step_dependencies : list, optional
+        The list of step names for the dependencies of this step. The default is None.
+        These steps will be checked for completion before running this step.
+
+    Returns
+    -------
+    calib_config : dict
+        The configuration for the calibration step. 
+
+    step_name : str
+        The name of the calibration step. (default: "CALIBRATION")
+    """
+    if output_name_suffix is not None:
+        output_name = f"camera_params.{output_name_suffix}.h5"
+        step_name = f"CALIBRATION.{output_name_suffix}"
+    else:
+        output_name = "camera_params.h5"
+        step_name = "CALIBRATION"
+
+    calib_config = {
+        "slurm_params": {
+            "mem": "24GB",
+            "gpu": False,
+            "sec_per_frame": sec_per_frame,
+            "ncpus": 6,
+            "jobs_in_progress": {},
+        },
+        "wrap_params": {
+            "func_path": join(PACKAGE_DIR, "v0", "calibration.py"),
+            "conda_env": "dataPy_NWB2",  # TODO: make this dynamic
+        },
+        "func_args": {
+            "video_dir": "{video_dir}",  # TODO: get these func args from a more reasonable location
+        },
+        "output_info": {
+            "output_name": output_name,  # saves an h5 file
+        },
+    }
+
+    if step_dependencies is not None:
+        calib_config["step_dependencies"] = step_dependencies
+
+    return calib_config, step_name
+
 
 @click.command()
 @click.argument("video_dir")

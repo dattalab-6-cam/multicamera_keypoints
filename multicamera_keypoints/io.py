@@ -8,6 +8,7 @@ from o2_utils.selectors import find_files_from_pattern
 
 # from multicamera_keypoints.file_utils import find_files_from_pattern
 from multicamera_keypoints.vid_utils import count_frames_cached
+import multicamera_keypoints.v0 as mkv0
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -134,7 +135,14 @@ def add_calibrations_to_config(
     return
 
 def _get_video_info(video_paths):
-    """
+    """ Parse a list of video paths into a dictionary with required info about each video.
+
+    Uses a cached version of count_frames to speed up the process in case of errors.
+
+    Parameters
+    ----------
+    video_paths: list of str
+        A list of the full paths to video files.
 
     Returns
     -------
@@ -211,6 +219,29 @@ def generate_config(
         raise ValueError(
             f"Config file already exists at {config_path}. Use `overwrite=True` to overwrite."
         )
+    
+    # Generate info for the calibration processing
+    sections = []
+
+    step_config, step_name = mkv0.calibration.make_config(PACKAGE_DIR)
+    sections.append((step_name, step_config))
+
+    # Generate info for the centernet
+    step_config, step_name = mkv0.segmentation.make_config(PACKAGE_DIR, weights_path)
+    sections.append((step_name, step_config))
+
+    # hrnet params
+    step_config, step_name = mkv0.detection.make_config(PACKAGE_DIR, weights_path)
+    sections.append((step_name, step_config))
+
+    # triangulation params
+    step_config, step_name = mkv0.triangulation.make_config(PACKAGE_DIR)
+    sections.append((step_name, step_config))
+
+    # gimbal params
+    step_config, step_name = mkv0.gimbal_smoothing.make_config(PACKAGE_DIR, gimbal_params_path)
+    sections.append((step_name, step_config))
+
 
     # Get video info
     all_vid_info = _get_video_info(video_paths)
@@ -234,168 +265,24 @@ def generate_config(
             "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
         }
     
+    # Add list of videos to each session
     for vid_name in all_vid_info:
         s = all_vid_info[vid_name]["session_name"]
         all_session_info[s]["videos"].append(vid_name)
     
-    # Generate info for a dummy processing step
-    dummy_sec_per_frame = 0.001
-    dummy = {
-        "slurm_params": {
-            "mem": "4GB",
-            "gpu": False,
-            "sec_per_frame": dummy_sec_per_frame,
-            "ncpus": 1,
-            "jobs_in_progress": [],
-        },
-        "wrap_params": {
-            "func_path": join(PACKAGE_DIR, "v0", "dummy.py"),
-            "conda_env": "dataPy_NWB2",
-        },
-        "func_args": {
-            "video_path": "{video_path}",
-        },
-        "output_info": {
-            "output_name": "dummy.npy",
-        },
-    }
+    # Add to the config!
+    sections.append(("VID_INFO", all_vid_info))
+    sections.append(("SESSION_INFO", all_session_info))
 
-    # Generate info for the calibration processing
-    calib_sec_per_frame = (0.15 * 6) + 0.2  # 0.13 s/f is a conservative estimate for detection for 6 workers for one vid, times 6 vids per calibration, plus extra time for the extra steps of calibration
-    calib = {
-        "slurm_params": {
-            "mem": "24GB",
-            "gpu": False,
-            "sec_per_frame": calib_sec_per_frame,
-            "ncpus": 6,
-            "jobs_in_progress": [],
-        },
-        "wrap_params": {
-            "func_path": join(PACKAGE_DIR, "v0", "calibration.py"),
-            "conda_env": "dataPy_NWB2",  # TODO: make this dynamic
-        },
-        "func_args": {
-            "video_dir": "{video_dir}",  # TODO: get these func args from a more reasonable location
-        },
-        "output_info": {
-            "output_name": "camera_params.h5",  # saves an h5 file
-        },
-    }
-
-    # Generate info for the centernet
-    centernet_sec_per_frame = 0.021
-    centernet = {
-        "slurm_params": {
-            "mem": "4GB",
-            "gpu": True,
-            "sec_per_frame": centernet_sec_per_frame,  # 75 min/job x 60 / (30*60*120 frames/job) = 0.021 sec/frame
-            "ncpus": 2,
-            "jobs_in_progress": [],
-        },
-        "wrap_params": {
-            "func_path": join(PACKAGE_DIR, "v0", "segmentation.py"),
-            "conda_env": "dataPy_torch2",  # TODO: make this dynamic?
-        },
-        "func_args": {  # NB: these must be in the right order here.
-            "video_path": "{video_path}",
-            "weights_path": find_files_from_pattern(
-                weights_path, "centernet.pth"
-            ),  # TODO: get these func args from a more reasonable location, ie the function should specify what its args are
-        },
-        "output_info": {
-            "output_name": "centroid.npy",
-        },
-    }
-
-    # hrnet params
-    hrnet_sec_per_frame = 0.087
-    hrnet = {
-        "slurm_params": {
-            "mem": "4GB",
-            "gpu": True,
-            "sec_per_frame": hrnet_sec_per_frame,
-            "ncpus": 2,
-            "jobs_in_progress": [],
-        },
-        "wrap_params": {
-            "func_path": join(PACKAGE_DIR, "v0", "detection.py"),
-            "conda_env": "dataPy_torch2",  # TODO: make this dynamic?
-        },
-        "func_args": {  # NB: these must be in the right order here.
-            "video_path": "{video_path}",
-            "weights_dir": weights_path,  # TODO: get these func args from a more reasonable location, ie the function should specify what its args are
-        },
-        "output_info": {
-            "output_name": "keypoints.h5",
-        },
-    }
-
-    # triangulation params
-    triangulation_sec_per_frame = 0.02
-    triangulation = {
-        "slurm_params": {
-            "mem": "6GB",
-            "gpu": False,
-            "sec_per_frame": triangulation_sec_per_frame,
-            "ncpus": 1,
-            "jobs_in_progress": [],
-        },
-        "wrap_params": {
-            "func_path": join(PACKAGE_DIR, "v0", "triangulation.py"),
-            "conda_env": "dataPy_NWB2",  # TODO: make this dynamic
-        },
-        "func_args": {
-            "video_dir": "{video_dir}",
-            "calib_file": "{calib_file}",
-        },
-        "output_info": {
-            "output_name": "robust_triangulation.npy",
-        },
-    }
-
-    # gimbal params
-    gimbal_sec_per_frame = 0.09
-    gimbal = {
-        "slurm_params": {
-            "mem": "8GB",
-            "gpu": True,
-            "sec_per_frame": gimbal_sec_per_frame,
-            "ncpus": 1,
-            "jobs_in_progress": [],
-        },  
-        "wrap_params": {
-            "func_path": join(PACKAGE_DIR, "v0", "gimbal_smoothing.py"),
-            "conda_env": "dataPy_KPMS_GIMBAL",  # TODO: make this dynamic
-            "modules": ['gcc/9.2.0', 'ffmpeg', 'cuda/11.7'],
-        },
-        "func_args": {
-            "vid_dir": "{video_dir}",
-            "calib_file": "{calib_file}",
-            "gimbal_params_file": gimbal_params_path,
-        },
-        "output_info": {
-            "output_name": "gimbal.npy",
-        }
-    }
-
+    # Misc other required info
     other = {
         "video_dir": project_dir,  # assume config is in the dir with videos by default
         "verbose": False,
         "keypoint_colormap": "autumn",
     }
+    sections.append(("OTHER", other))
 
-    sections = [
-        ("VID_INFO", all_vid_info),
-        ("SESSION_INFO", all_session_info),
-        ("CALIBRATION", calib),
-        ("CENTERNET", centernet),
-        ("HRNET", hrnet),
-        ("TRIANGULATION", triangulation),
-        ("GIMBAL", gimbal),
-        ("DUMMY", dummy),
-        ("OTHER", other),
-    ]
-
+    # Write the config file
     with open(config_path, "w") as f:
         f.write(_build_yaml(sections, config_comments))
 
@@ -407,7 +294,52 @@ def generate_config(
     return
 
 
-def check_config_validity(config):
+def add_section_to_config(project_dir, section_name, section, processing_level="videos", overwrite=False):
+    """Manually add a new section to the config file. 
+    Useful for adding new processing steps to the config file, 
+    i.e. if you finetune a network and want to re-run from where you left off.
+
+    Parameters
+    ----------
+    project_dir: str
+        The directory containing the config file.
+
+    section_name: str
+        The name of the section to add.
+
+    section: dict
+        The section to add.
+
+    processing_level: str, default="videos"
+        Whether this processing step is done per video ("videos"), or per session ("sessions")
+
+        
+    overwrite: bool, default=False
+        Whether to overwrite an existing section with the same name.
+    Returns
+    -------
+    None
+    """
+    config = load_config(project_dir)
+    if section_name in config and not overwrite:
+        raise ValueError(f"Section {section_name} already exists in the config file.")
+    
+    config[section_name] = section
+
+    if processing_level == "videos":
+        for vid_info in config["VID_INFO"].values():
+            vid_info.update({f"{section_name}_done": False})
+    elif processing_level == "sessions":
+        for session_info in config["SESSION_INFO"].values():
+            session_info.update({f"{section_name}_done": False})
+
+    save_config(project_dir, config)
+    config_path = os.path.join(project_dir, config_name)
+    check_config_validity(config_path)
+
+    return
+
+def check_config_validity(config=None, project_dir=None):
     """Check that the config file is valid. This includes checking that
     paths exist and that conda environments exist.
 
@@ -416,18 +348,30 @@ def check_config_validity(config):
     config: str or dict
         The config file or a dictionary of the config file.
 
+    project_dir: str
+        The directory containing the config file.
+
     Returns
     -------
     bool
     """
 
-    if isinstance(config, str):
-        config = load_config(config)
+    if project_dir is not None and config is not None:
+        raise ValueError("Only one of `config` and `project_dir` can be specified.")
+    
+    if project_dir is not None:
+        config = load_config(project_dir)
+    elif isinstance(config, str):
+        with open(config, "r") as stream:
+            config = yaml.safe_load(stream)
+    elif not isinstance(config, dict):
+        raise ValueError("config must be a dictionary or a path to a config file, or pass project_dir.")
 
     error_messages = []
 
     # Check that required paths exist
-    top_levels = ["CENTERNET", "DUMMY"]
+    top_level_base_names = ["CENTERNET", "HRNET", "TRIANGULATION", "GIMBAL"]
+    top_levels = [section_name for section_name in config.keys() if any([base_name in section_name for base_name in top_level_base_names])]
     for top_level in top_levels:
 
         if "weights_path" in config[top_level]["func_args"]:

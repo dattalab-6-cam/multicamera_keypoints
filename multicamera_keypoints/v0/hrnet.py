@@ -191,6 +191,8 @@ class StageModule(nn.Module):
 
 
 class HRNet(nn.Module):
+    """ HRNet used in teh keypoint deteciton (HRNET) step.
+    """
     def __init__(self, c=32, nof_joints=14, bn_momentum=0.1, num_input_channels=1):
         super(HRNet, self).__init__()
 

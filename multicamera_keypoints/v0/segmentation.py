@@ -1,84 +1,85 @@
 import os
+from os.path import join
 
 import click
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import tqdm
+from o2_utils.selectors import find_files_from_pattern
 from vidio.read import OpenCVReader
+# see also imports under main()
 
+def make_config(
+    PACKAGE_DIR,
+    weights_path,
+    sec_per_frame=0.021,
+    output_name_suffix=None,
+    step_dependencies=None,
+):
+    """Create a default config for the CENTERNET step.
 
-class ConvNet(nn.Module):
-    def __init__(self, initial_channels=32):
-        super(ConvNet, self).__init__()
+    Parameters
+    ----------
+    PACKAGE_DIR : str
+        The directory where the package is installed.
 
-        # First Convolutional Layer
-        self.conv1 = nn.Conv2d(1, initial_channels, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(initial_channels)
+    weights_path : str
+        The path to the weights file for the centernet model.
+        
+    sec_per_frame : float, optional
+        The number of seconds per frame for the centernet step. The default is 0.021.
+        
+    output_name_suffix : str, optional
+        The suffix to add to the output name. The default is None.
+        Example: "v2" --> "centroid.v2.npy", and the step name 
+        will be "CENTERNET.v2".
 
-        # Second Convolutional Layer
-        self.conv2 = nn.Conv2d(
-            initial_channels, initial_channels * 2, kernel_size=3, stride=1, padding=1
-        )
-        self.bn2 = nn.BatchNorm2d(initial_channels * 2)
+    step_dependencies : list, optional
+        The list of step names for the dependencies of this step. The default is None.
+        These steps will be checked for completion before running this step.
 
-        # Third Convolutional Layer
-        self.conv3 = nn.Conv2d(
-            initial_channels * 2,
-            initial_channels * 4,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-        )
-        self.bn3 = nn.BatchNorm2d(initial_channels * 4)
+    Returns
+    -------
+    centernet_config : dict
+        The configuration for the centernet step. 
 
-        # Fourth Convolutional Layer
-        self.conv4 = nn.Conv2d(
-            initial_channels * 4,
-            initial_channels * 4,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-        )
-        self.bn4 = nn.BatchNorm2d(initial_channels * 4)
+    step_name : str
+        The name of the segmentation step. (default: "CENTERNET")
+    """
+    if output_name_suffix is not None:
+        output_name = f"centroid.{output_name_suffix}.npy"
+        step_name = f"CENTERNET.{output_name_suffix}"
+    else:
+        output_name = "centroid.npy"
+        step_name = "CENTERNET"
 
-        # MaxPooling Layer
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+    centernet_config = {
+        "slurm_params": {
+            "mem": "4GB",
+            "gpu": True,
+            "sec_per_frame": sec_per_frame,  # 75 min/job x 60 / (30*60*120 frames/job) = 0.021 sec/frame
+            "ncpus": 2,
+            "jobs_in_progress": {},
+        },
+        "wrap_params": {
+            "func_path": join(PACKAGE_DIR, "v0", "segmentation.py"),
+            "conda_env": "dataPy_torch2",  # TODO: make this dynamic?
+        },
+        "func_args": {  # NB: these args **must** be in the right order here.
+            "video_path": "{video_path}",
+            "weights_path": find_files_from_pattern(
+                weights_path, "centernet.pth"
+            ),  # TODO: get these func args from a more reasonable location, ie the function should specify what its args are
+        },
+        "output_info": {
+            "output_name": output_name,
+        },
+    }
 
-        # Final Convolutional Layer to generate 1-channel output
-        self.conv_final = nn.Conv2d(initial_channels * 4, 1, kernel_size=1, stride=1)
+    if step_dependencies is not None:
+        centernet_config["step_dependencies"] = step_dependencies
 
-    def forward(self, x):
-        # First Conv + ReLU + MaxPool
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.maxpool(x)
-
-        # Second Conv + ReLU + MaxPool
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = F.relu(x)
-        x = self.maxpool(x)
-
-        # Third Conv + ReLU + MaxPool
-        x = self.conv3(x)
-        x = self.bn3(x)
-        x = F.relu(x)
-        x = self.maxpool(x)
-
-        # Fourth Conv + ReLU + MaxPool
-        x = self.conv4(x)
-        x = self.bn4(x)
-        x = F.relu(x)
-        x = self.maxpool(x)
-
-        # Final Conv
-        x = self.conv_final(x)
-        x = F.sigmoid(x)
-        return x
+    return centernet_config, step_name
 
 
 def load_model(weights_path):
@@ -110,6 +111,11 @@ def apply_model(model, vid_path):
 @click.argument("weights_path")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 def main(vid_path, weights_path, overwrite=False):
+    
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from mck.v0.convnet import ConvNet
     
     print(f"Running centernet on {vid_path}...")
     fullfile, ext = os.path.splitext(vid_path)
