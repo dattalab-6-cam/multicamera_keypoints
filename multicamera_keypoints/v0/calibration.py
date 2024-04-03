@@ -1,4 +1,4 @@
-from os.path import basename, join
+from os.path import basename, join, exists
 
 import click
 import multicam_calibration as mcc
@@ -68,6 +68,8 @@ def make_config(
 
     if step_dependencies is not None:
         calib_config["step_dependencies"] = step_dependencies
+    else:
+        calib_config["step_dependencies"] = []
 
     return calib_config, step_name
 
@@ -83,12 +85,20 @@ def make_config(
 @click.option(
     "--square-size", default=12.5, help="Size of the squares in the chessboard"
 )
-def main(video_dir, board_shape, square_size):
+@click.option("--output_name", default="camera_params.h5", help="Suffix appended to the video name to create the output file.")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing calibration data.")
+def main(video_dir, board_shape, square_size, output_name="camera_params.h5", overwrite=False):
 
     board_shape = tuple(map(int, board_shape.split("x")))
     camera_names = ["top", "side1", "side2", "side3", "side4", "bottom"]
     video_paths = [find_files_from_pattern(video_dir, f"*.{camera}.mp4") for camera in camera_names]
     video_basename = basename(video_paths[0]).split(".")[0]  # remove the camera name --> 20240422_J04301
+
+    # Check for potential overwriting 
+    save_path = join(video_dir, f"{video_basename}.{output_name}")
+    if not overwrite and exists(save_path):
+        print(f"Calibration already exists at {save_path}. Exiting.")
+        return
 
     # detect calibration object in each video
     all_calib_uvs, all_img_sizes = mcc.run_calibration_detection(
@@ -160,7 +170,6 @@ def main(video_dir, board_shape, square_size):
     fig.savefig(join(video_dir, f"{video_basename}.bundle_adjusted_residuals.png"))
 
     # save for GIMBAL
-    save_path = join(video_dir, f"{video_basename}.camera_params.h5")
     mcc.save_calibration(
         all_extrinsics, all_intrinsics, camera_names, save_path, save_format="gimbal"
     )
