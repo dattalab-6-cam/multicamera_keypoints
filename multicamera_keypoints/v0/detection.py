@@ -349,6 +349,9 @@ def make_config(
             "output_name": output_name,
         },
         "step_dependencies": step_dependencies,
+        "pipeline_info": {
+            "processing_level": "video",
+        },
     }
 
     return hrnet_config, step_name

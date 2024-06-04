@@ -56,25 +56,28 @@ def make_config(
         step_dependencies = ["HRNET"]
 
     triang_config = {
-            "slurm_params": {
-                "mem": "6GB",
-                "gpu": False,
-                "sec_per_frame": sec_per_frame,
-                "ncpus": 1,
-                "jobs_in_progress": {},
-            },
-            "wrap_params": {
-                "func_path": join(PACKAGE_DIR, "v0", "triangulation.py"),
-                "conda_env": "dataPy_NWB2",  # TODO: make this dynamic?
-            },
-            "func_args": {  # NB: these args **must** be in the right order here.
-                "video_dir": "{video_dir}",
-                "calib_file": "{calib_file}",
-            },
-            "output_info": {
-                "output_name": output_name,
-            },
-            "step_dependencies": [],  # TODO: doesn't really work to put HRNET here, since HRNET is at hte video level and this is at the session level.
+        "slurm_params": {
+            "mem": "6GB",
+            "gpu": False,
+            "sec_per_frame": sec_per_frame,
+            "ncpus": 1,
+            "jobs_in_progress": {},
+        },
+        "wrap_params": {
+            "func_path": join(PACKAGE_DIR, "v0", "triangulation.py"),
+            "conda_env": "dataPy_NWB2",  # TODO: make this dynamic?
+        },
+        "func_args": {  # NB: these args **must** be in the right order here.
+            "video_dir": "{video_dir}",
+            "calib_file": "{calib_file}",
+        },
+        "output_info": {
+            "output_name": output_name,
+        },
+        "step_dependencies": [],  # TODO: doesn't really work to put HRNET here, since HRNET is at hte video level and this is at the session level.
+        "pipeline_info": {
+            "processing_level": "session",
+        },
     }
 
     return triang_config, step_name

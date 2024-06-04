@@ -75,13 +75,16 @@ def _prepare_calibrations_for_batch(project_dir, overwrite=False):
         )
 
 
-def _prepare_videos_for_batch(project_dir, processing_steps=None, increment_time_fraction=1.0, recalculate=False):
+def _prepare_videos_for_batch(project_dir, processing_step, increment_time_fraction=1.0, recalculate=False):
     """Calculate the number of frames in each video and the time needed for each step of processing.
 
     Parameters
     ----------
     project_dir : str   
         Path to the project directory.
+
+    processing_step: str
+        The processing step to prepare for.
 
     recalculate : bool
         If True, recalculate the number of frames in each video.
@@ -109,9 +112,8 @@ def _prepare_videos_for_batch(project_dir, processing_steps=None, increment_time
             warnings.warn(f"Video {vid_name} has fewer than 120 frames. This may be an issue.")
 
         # Calculate how much time needed for each step of processing
-        for step in processing_steps:
-            time_sec = int(increment_time_fraction * max(5*60, nframes * config[step]["slurm_params"]["sec_per_frame"]))  # min 5 minutes
-            vid_info[f"{step}_time"] = format_time_from_sec(time_sec)
+        time_sec = int(increment_time_fraction * max(5*60, nframes * config[processing_step]["slurm_params"]["sec_per_frame"]))  # min 5 minutes
+        vid_info[f"{processing_step}_time"] = format_time_from_sec(time_sec)
 
     # Update the config
     update_config(
@@ -123,7 +125,7 @@ def _prepare_videos_for_batch(project_dir, processing_steps=None, increment_time
     return
 
 
-def _prepare_sessions_for_batch(project_dir, processing_steps=None, increment_time_fraction=1.0, recalculate=False):
+def _prepare_sessions_for_batch(project_dir, processing_step, increment_time_fraction=1.0, recalculate=False):
     
     config = load_config(project_dir)
 
@@ -154,9 +156,8 @@ def _prepare_sessions_for_batch(project_dir, processing_steps=None, increment_ti
         nframes = config["VID_INFO"][session_info["videos"][0]]["nframes"]
 
         # Calculate how much time needed for each step of processing
-        for step in processing_steps:
-            time_sec = int(increment_time_fraction * max(5*60, nframes * config[step]["slurm_params"]["sec_per_frame"]))  # min 5 minutes
-            session_info[f"{step}_time"] = format_time_from_sec(time_sec)
+        time_sec = int(increment_time_fraction * max(5*60, nframes * config[processing_step]["slurm_params"]["sec_per_frame"]))  # min 5 minutes
+        session_info[f"{processing_step}_time"] = format_time_from_sec(time_sec)
 
     # Update the config
     update_config(
@@ -166,8 +167,8 @@ def _prepare_sessions_for_batch(project_dir, processing_steps=None, increment_ti
     )
 
 
-def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.0, overwrite=False):
-    """Prepare a batch script for each processing step.
+def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, overwrite=False):
+    """Prepare a batch script for a processing step.
 
     This function is fairly agnostic to the specific processing step going on.
     It takes care of:
@@ -184,8 +185,8 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
     project_dir : str
         Path to the project directory
 
-    processing_steps : list of str
-        List of processing steps to run. 
+    processing_step : str
+        Single processing step to run. 
 
     increment_time_fraction : float, optional
         If given, the time requested for each job is multiplied by this factor.
@@ -199,41 +200,38 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
     None
     """
     
-    # Determine if we're doing video- or session-level processing, and prepare items accordingly.
-    if processing_steps is None:
-        raise ValueError("Please specify at least one processing step to run")
+    config = load_config(project_dir)
+    proc_level = config[processing_step]["pipeline_info"]["processing_level"]
 
-    elif all([any([base_step in step for base_step in ["CALIBRATION"]]) for step in processing_steps]):
+    if proc_level == "calibration":
         _prepare_calibrations_for_batch(project_dir, overwrite=overwrite)
         config_info_key = "CALIBRATION_VIDEOS"
 
-    elif all([any([base_step in step for base_step in ["CENTERNET", "HRNET"]]) for step in processing_steps]):
-        _prepare_videos_for_batch(project_dir, processing_steps=processing_steps, increment_time_fraction=increment_time_fraction, recalculate=False)
+    elif proc_level == "video":
+        _prepare_videos_for_batch(project_dir, processing_step=processing_step, increment_time_fraction=increment_time_fraction, recalculate=False)
         config_info_key = "VID_INFO"
 
-    elif all([any([base_step in step for base_step in ["TRIANGULATION", "GIMBAL"]]) for step in processing_steps]):
-        _prepare_sessions_for_batch(project_dir, processing_steps=processing_steps, increment_time_fraction=increment_time_fraction, recalculate=False)
+    elif proc_level == "session":
+        _prepare_sessions_for_batch(project_dir, processing_step=processing_step, increment_time_fraction=increment_time_fraction, recalculate=False)
         config_info_key = "SESSION_INFO"
 
 
     # Update cuarrently running jobs, in case any have finished since the last time we checked
-    for step in processing_steps:
-        update_running_jobs(project_dir, step)
+    update_running_jobs(project_dir, processing_step)
         
     # Make a directory to hold files relevant to each proc step
-    for step in processing_steps:
-        step_dir = join(project_dir, "keypoint_batch", step)
-        slurm_out_dir = join(step_dir, "slurm_outs")
-        os.makedirs(step_dir, exist_ok=True)
-        os.makedirs(slurm_out_dir, exist_ok=True)
-        update_config(
-            project_dir, 
-            {step: {"slurm_params": {
-                "slurm_out_dir": slurm_out_dir,
-                "step_dir": step_dir,
-            }}},
-            verbose=False,
-        )
+    step_dir = join(project_dir, "keypoint_batch", processing_step)
+    slurm_out_dir = join(step_dir, "slurm_outs")
+    os.makedirs(step_dir, exist_ok=True)
+    os.makedirs(slurm_out_dir, exist_ok=True)
+    update_config(
+        project_dir, 
+        {processing_step: {"slurm_params": {
+            "slurm_out_dir": slurm_out_dir,
+            "step_dir": step_dir,
+        }}},
+        verbose=False,
+    )
 
     # Generate the commands required for each step / video
     time.sleep(0.5)
@@ -243,86 +241,83 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
     n_skipped_because_not_ready = 0
     n_skipped_because_done = 0
     n_skipped_because_running = 0
-    for step in processing_steps:
-        n_cmds = 0
+    
+    n_cmds = 0
 
-        # For each video / session
-        for item_name, item_info in config[config_info_key].items():
+    # For each video / session
+    for item_name, item_info in config[config_info_key].items():
 
-            # import pdb
-            # pdb.set_trace()
+        # Check all previous steps are done on this item
+        previous_steps = config[processing_step]["step_dependencies"]
+        if previous_steps is not None and not all([f"{prev}_done" in item_info and item_info[f"{prev}_done"] for prev in previous_steps]):
+            n_skipped_because_prev_steps_not_done += 1
+            continue
 
-            # Check all previous steps are done on this item
-            previous_steps = config[step]["step_dependencies"]
-            if previous_steps is not None and not all([f"{prev}_done" in item_info and item_info[f"{prev}_done"] for prev in previous_steps]):
-                n_skipped_because_prev_steps_not_done += 1
-                continue
+        if "ready_for_processing" in item_info and not item_info["ready_for_processing"]:
+            n_skipped_because_not_ready += 1
+            continue
 
-            if "ready_for_processing" in item_info and not item_info["ready_for_processing"]:
-                n_skipped_because_not_ready += 1
-                continue
+        # Check if this item is currently being processed
+        jobs_in_prog_names = [d["NAME"] for d in config[processing_step]["slurm_params"]["jobs_in_progress"].values()]
+        if any([item_name in job_name for job_name in jobs_in_prog_names]):
+            n_skipped_because_running += 1
+            continue
 
-            # Check if this item is currently being processed
-            jobs_in_prog_names = [d["NAME"] for d in config[step]["slurm_params"]["jobs_in_progress"].values()]
-            if any([item_name in job_name for job_name in jobs_in_prog_names]):
-                n_skipped_because_running += 1
-                continue
+        # Check if this step is done on this item, if so, skip
+        if f"{processing_step}_done" in item_info and item_info[f"{processing_step}_done"] and not overwrite:
+            n_skipped_because_done += 1
+            continue
 
-            # Check if this step is done on this item, if so, skip
-            if f"{step}_done" in item_info and item_info[f"{step}_done"] and not overwrite:
-                n_skipped_because_done += 1
-                continue
+        # Make the command to get an sbatch job with the right time / partition / etc.
+        slurm_cmd = _make_slurm_cmd(
+            time=item_info[f"{processing_step}_time"],
+            **config[processing_step]['slurm_params'],
+            slurm_out_prefix=f"{processing_step}_{item_name}_{now}",
+            job_name=f"{item_name}_{processing_step}",
+        )
 
-            # Make the command to get an sbatch job with the right time / partition / etc.
-            slurm_cmd = _make_slurm_cmd(
-                time=item_info[f"{step}_time"],
-                **config[step]['slurm_params'],
-                slurm_out_prefix=f"{step}_{item_name}_{now}",
-                job_name=f"{item_name}_{step}",
-            )
+        # Format the python command with conda env / modules / python script to use.
+        wrap_cmd = _make_wrap_cmd(**config[processing_step]['wrap_params'])
 
-            # Format the python command with conda env / modules / python script to use.
-            wrap_cmd = _make_wrap_cmd(**config[step]['wrap_params'])
+        # Creat the full command
+        cmd = slurm_cmd + wrap_cmd
 
-            # Creat the full command
-            cmd = slurm_cmd + wrap_cmd
+        # Prepare an output file
+        out_file = join(config[processing_step]["slurm_params"]["step_dir"], f"{processing_step}_batch_{now}.sh")
+        
+        with open(out_file, "a") as f:
+            args_str = " ".join([arg for arg in config[processing_step]["func_args"].values()]).format(**item_info)
+            if "func_kwargs" in config[processing_step]:
+                kwargs_str = " ".join([f"--{k} {v}" if not isinstance(v, bool) else f"--{k}" for k, v in config[processing_step]["func_kwargs"].items()])
+            else:
+                kwargs_str = ""
+            if "output_name" in config[processing_step]["output_info"]:
+                kwargs_str = kwargs_str + f" --output_name {config[processing_step]['output_info']['output_name']}"
+            if overwrite:
+                args_str = args_str + " --overwrite"
+            full_cmd = cmd.format(args=args_str, kwargs=kwargs_str)
 
-            # Prepare an output file
-            out_file = join(config[step]["slurm_params"]["step_dir"], f"{step}_batch_{now}.sh")
-            
-            with open(out_file, "a") as f:
-                args_str = " ".join([arg for arg in config[step]["func_args"].values()]).format(**item_info)
-                if "func_kwargs" in config[step]:
-                    kwargs_str = " ".join([f"--{k} {v}" if not isinstance(v, bool) else f"--{k}" for k, v in config[step]["func_kwargs"].items()])
-                else:
-                    kwargs_str = ""
-                if "output_name" in config[step]["output_info"]:
-                    kwargs_str = kwargs_str + f" --output_name {config[step]['output_info']['output_name']}"
-                if overwrite:
-                    args_str = args_str + " --overwrite"
-                full_cmd = cmd.format(args=args_str, kwargs=kwargs_str)
+            # Finally, add item-specific arguments (ie path to a specific video)
+            full_cmd = cmd.format(args=args_str)  # TODO: this could probably be part of _make_wrap_cmd
 
-                # Finally, add item-specific arguments (ie path to a specific video)
-                full_cmd = cmd.format(args=args_str)  # TODO: this could probably be part of _make_wrap_cmd
+            # Write to file
+            f.write(full_cmd)
+            f.write("\n\n")
+        n_cmds += 1
 
-                # Write to file
-                f.write(full_cmd)
-                f.write("\n\n")
-            n_cmds += 1
+    # Report results
+    if n_cmds > 0:
+        print(f"Batch script for processing_step {processing_step} ready, containing {n_cmds} jobs.")
+        print("\t script: ", out_file)
 
-        # Report results
-        if n_cmds > 0:
-            print(f"Batch script for step {step} ready, containing {n_cmds} jobs.")
-            print("\t script: ", out_file)
-
-        if n_skipped_because_prev_steps_not_done:
-            print(f"Skipped {n_skipped_because_prev_steps_not_done} jobs because previous steps were not done.")
-        if n_skipped_because_not_ready:
-            print(f"Skipped {n_skipped_because_not_ready} jobs because session was not ready.")
-        if n_skipped_because_running:
-            print(f"Skipped {n_skipped_because_running} jobs because they are already being processed.")
-        if n_skipped_because_done:
-            print(f"Skipped {n_skipped_because_done} jobs because they were already done")
+    if n_skipped_because_prev_steps_not_done:
+        print(f"Skipped {n_skipped_because_prev_steps_not_done} jobs because previous steps were not done.")
+    if n_skipped_because_not_ready:
+        print(f"Skipped {n_skipped_because_not_ready} jobs because session was not ready.")
+    if n_skipped_because_running:
+        print(f"Skipped {n_skipped_because_running} jobs because they are already being processed.")
+    if n_skipped_because_done:
+        print(f"Skipped {n_skipped_because_done} jobs because they were already done")
         
     return
 
