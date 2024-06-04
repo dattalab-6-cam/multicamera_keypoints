@@ -1,7 +1,7 @@
-import av
 import os
-import sys
-import numpy as np
+import multiprocessing
+
+import av
 import click
 
 
@@ -18,11 +18,23 @@ def count_frames(file_name):
 
 @click.command()
 @click.argument("input_vid", type=click.Path(exists=True))
-@click.argument("--output_vid", default=None)
-@click.option("--original_framerate", default="120", help="Original framerate of the video")
-@click.option("--preset", default="slow", help="Preset for compression")
-@click.option("--delete_original", is_flag=True, help="Whether or not to delete the original file. If true and no output vid is provided, the original file will be replaced with the compressed file. If false and no output vid is provided, the compressed file will be saved as input_vid.replace(ext, f\"_COMPRESSED{ext}\").")
-def main(input_vid, output_vid=None, original_framerate="120", preset="slow", delete_original=False):
+@click.option("--output_vid", default=None, help="Path to output video. If not provided, the compressed video will be saved as input_vid.replace(ext, f'_COMPRESSED{ext}').")
+@click.option("--preset", default="slow", help="Preset for ffmpeg compression")
+@click.option("--crf", default=21, help="CRF for ffmpeg compression")
+@click.option("--original_framerate", default=None, help="Force original framerate instead of reading from video",)
+@click.option("--nthreads", default=-1, help="Number of threads for ffmpeg multi-threading. -1 (default) means use all available. ffmpeg max is 16.")
+@click.option("--fmtgray", is_flag=True, help="Experimental feature: add grayscale filter before compressing.")
+@click.option("--delete_original", is_flag=True, help='Whether or not to delete the original file. If true and no output vid is provided, the original file will be replaced with the compressed file. If false and no output vid is provided, the compressed file will be saved as input_vid.replace(ext, f"_COMPRESSED{ext}").')
+def main(
+    input_vid,
+    output_vid=None,
+    preset="slow",
+    crf=21,
+    original_framerate=None,
+    nthreads=-1,
+    delete_original=False,
+    fmtgray=False,
+):
     """
     Compress a video using ffmpeg.
 
@@ -36,7 +48,7 @@ def main(input_vid, output_vid=None, original_framerate="120", preset="slow", de
         Path to input video.
 
     output_vid : str
-        Path to output video. 
+        Path to output video.
         If not provided and delete_original is False, the compressed video will be saved as input_vid.replace(ext, f"_COMPRESSED{ext}").
         If not provided and delete_original is True, the compressed video will replace the original video.
         If provided, the compressed video will be saved to the provided path, and the original deleted or not depending on the delete_original flag.
@@ -55,9 +67,31 @@ def main(input_vid, output_vid=None, original_framerate="120", preset="slow", de
     None
 
     """
-    # Set up 
+    # Set up
     print(f"Running compression on {input_vid} with presest {preset}")
-    original_framerate = int(original_framerate)
+
+    # Read frame rate from video using pyav
+    if original_framerate is None:
+        container = av.open(input_vid)
+        stream = container.streams.video[0]
+        original_framerate = stream.average_rate
+        container.close()
+        print(f"Original framerate detected: {original_framerate} fps")
+    else:
+        print(f"Using user-provided framerate: {original_framerate} fps")
+        original_framerate = int(original_framerate)
+
+    # Count num cores available
+    if nthreads == -1:    
+        try:
+            # assume we're on slurm
+            nthreads = os.getenv('SLURM_CPUS_PER_TASK')
+        except KeyError:
+            nthreads = multiprocessing.cpu_count()
+    else:
+        nthreads = int(nthreads)
+        assert nthreads > 0, "Number of threads must be greater than 0."
+
 
     # Set up output path
     if output_vid is None and delete_original is False:
@@ -72,12 +106,19 @@ def main(input_vid, output_vid=None, original_framerate="120", preset="slow", de
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Set ffmpeg options
-    if preset == "slow":
-        ffmpeg_command = f"ffmpeg -y -r {original_framerate} -i {input_vid} -c:v libx264 -preset slow -crf 23 {output_vid}"
+    print(f"Output video will be saved to: {output_vid}")
 
-    # Count frames
+    # Set ffmpeg options
+    if fmtgray:
+        fmt_filter = "-vf format=gray,format=yuv420p"
+    else:
+        fmt_filter = ""
+    
+    ffmpeg_command = f"ffmpeg -y -r {original_framerate} -i {input_vid} {fmt_filter} -c:v libx264 -preset {preset} -crf {crf} -threads {nthreads} {output_vid}"
+
+    # Count frames before compression, to ensure they match after compression
     num_frames = count_frames(input_vid)
+    original_filesize = os.path.getsize(input_vid)
 
     # Compress video, and read out the result
     if not os.path.exists(output_vid):
@@ -91,7 +132,15 @@ def main(input_vid, output_vid=None, original_framerate="120", preset="slow", de
     print("Checking number of frames in new video")
     compressed_num_frames = count_frames(output_vid)
     if num_frames != compressed_num_frames:
-        raise ValueError(f"Number of frames do not match, original vid has {num_frames} and compressed vid has {compressed_num_frames} frames.")
+        raise ValueError(
+            f"Number of frames do not match, original vid has {num_frames} and compressed vid has {compressed_num_frames} frames."
+        )
+    
+    # Check file size
+    compressed_filesize = os.path.getsize(output_vid)
+    print(f"Original file size: {original_filesize/1e9:0.3f} GB")
+    print(f"Compressed file size: {compressed_filesize/1e9:0.3f} GB")
+    print(f"Compression ratio: {compressed_filesize/original_filesize:0.3f}")
 
     # Remove the original file if requested
     if delete_original:
@@ -102,8 +151,9 @@ def main(input_vid, output_vid=None, original_framerate="120", preset="slow", de
     if replace_original:
         print("Replacing original file with compressed file!")
         os.rename(output_vid, input_vid)
-    
+
     print("Done.")
+
 
 if __name__ == "__main__":
     main()
