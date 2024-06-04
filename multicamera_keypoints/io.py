@@ -156,13 +156,20 @@ def _get_video_info(video_paths):
         try:
             print(video)
             nframes = count_frames_cached(video)
+            file_size = os.path.getsize(video)
+            kb_per_fr = file_size / nframes / 1e3
         except Exception as e:
             print(f"Error counting frames in {video}, skipping...")
             print(f"Error: {e}")
             continue
         video_name, _ = os.path.splitext(os.path.basename(video))
         session_name = video_name.split(".")[0]
-        vid_info[video_name] = {"video_path": os.path.abspath(video), "nframes": nframes, "session_name": session_name}
+        vid_info[video_name] = {
+            "video_path": os.path.abspath(video), 
+            "nframes": nframes, 
+            "session_name": session_name,
+            "kb_per_fr": kb_per_fr,
+        }
     return vid_info
 
 
