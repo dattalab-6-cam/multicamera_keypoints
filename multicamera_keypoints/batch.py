@@ -666,6 +666,62 @@ def update_running_jobs(project_dir, processing_step):
     return running_jobs
 
 
+def verify_compression_outputs_by_size(project_dir, processing_step, overwrite=False):
+    """Verify that compression worked by comparing size of video per frame.
+
+    Parameters
+    ----------
+    project_dir : str
+        Path to the project directory
+
+    overwrite : bool
+        If True, re-check videos even if they are marked as done in the config.
+
+    Returns
+    -------
+    None
+    """
+    # Load the project config
+    project_dir = os.path.abspath(project_dir)
+    config = load_config(project_dir)
+
+    if not any(["COMPRESSION" in step for step in config.keys()]):
+        raise ValueError("No compression step found in config.")
+    elif processing_step not in config.keys():
+        raise ValueError(f"Processing step {processing_step} not found in config.")
+    elif "COMPRESSION" not in processing_step:
+        raise ValueError(f"Processing step {processing_step} is not a compression step.")
+
+    # The compression section of the config has an attr under output_info called "expected_post_comp_max_kb_per_frame"
+    # This is the expected maximum size of the video after compression, in kb per frame.
+    # Use this to verify that compression worked as expected -- if the size of the video per frame is less than this, it probably worked.
+    expected_kb_per_fr = config[processing_step]["output_info"]["expected_post_comp_max_kb_per_frame"]
+
+    n_compressed = 0
+    n_not_compressed = 0
+    comprn_key = f"{processing_step}_done"
+
+    for vid_name, vid_info in config["VID_INFO"].items():
+        if vid_info[comprn_key] and not overwrite:
+            continue
+    
+
+        actual_kb_per_fr = os.path.getsize(vid_info["video_path"]) / vid_info["nframes"] / 1024
+
+        if actual_kb_per_fr < expected_kb_per_fr:
+            n_compressed += 1
+            vid_info[comprn_key] = True
+        else:
+            n_not_compressed += 1
+            vid_info[comprn_key] = False
+
+    # Update the config
+    update_config(project_dir, {"VID_INFO": config["VID_INFO"]}, verbose=False)
+
+    print(f"{n_compressed} videos compressed, {n_not_compressed} videos not compressed")
+
+    return
+
 def verify_outputs(project_dir, processing_step, overwrite=False):
     """Verify that the outputs of a processing step are present and complete.
 
