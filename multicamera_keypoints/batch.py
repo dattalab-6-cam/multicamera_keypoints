@@ -253,11 +253,16 @@ def prepare_batch(project_dir, processing_steps=None, increment_time_fraction=1.
             wrap_cmd = _make_wrap_cmd(**config[step]['wrap_params'])
             cmd = slurm_cmd + wrap_cmd
             out_file = join(config[step]["slurm_params"]["step_dir"], f"{step}_batch_{now}.sh")
+            
             with open(out_file, "a") as f:
                 args_str = " ".join([arg for arg in config[step]["func_args"].values()]).format(**vid_info)
-                # import pdb; pdb.set_trace()
-                args_str = args_str + f" --output_name {config[step]['output_info']['output_name']}"
-                full_cmd = cmd.format(args=args_str)
+                if "func_kwargs" in config[step]:
+                    kwargs_str = " ".join([f"--{k} {v}" if not isinstance(v, bool) else f"--{k}" for k, v in config[step]["func_kwargs"].items()])
+                else:
+                    kwargs_str = ""
+                if "output_name" in config[step]["output_info"]:
+                    kwargs_str = kwargs_str + f" --output_name {config[step]['output_info']['output_name']}"
+                full_cmd = cmd.format(args=args_str, kwargs=kwargs_str)
                 f.write(full_cmd)
                 f.write("\n\n")
             n_cmds += 1
