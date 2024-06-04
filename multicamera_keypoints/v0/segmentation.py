@@ -74,10 +74,9 @@ def make_config(
         "output_info": {
             "output_name": output_name,
         },
+        "step_dependencies": step_dependencies,
     }
-
-    if step_dependencies is not None:
-        centernet_config["step_dependencies"] = step_dependencies
+    
 
     return centernet_config, step_name
 
@@ -108,19 +107,19 @@ def apply_model(model, vid_path):
 
 @click.command()
 @click.argument("vid_path")
-@click.argument("weights_path")
+@click.argument("weights_path", type=click.Path(exists=True))
+@click.option("--output_name", default="centroid.npy", help="name of output file")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
-def main(vid_path, weights_path, overwrite=False):
-    
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    from mck.v0.convnet import ConvNet
+def main(vid_path, weights_path, output_name="centroid.npy", overwrite=False):
     
     print(f"Running centernet on {vid_path}...")
-    fullfile, ext = os.path.splitext(vid_path)
-    output_name = "centroid"
-    out_file = fullfile + "." + output_name + ".npy"
+
+    # Validate the output name
+    assert output_name.split(".")[-1] == "npy", "Output name for centernet must end in .npy"
+    
+    # Setup output name and check for overwriting issues
+    fullfile, _ = os.path.splitext(vid_path)
+    out_file = fullfile + "." + output_name
     if os.path.exists(out_file) and not overwrite:
         print(f"Output file {out_file} exists, skipping...")
         return
@@ -142,4 +141,11 @@ def main(vid_path, weights_path, overwrite=False):
 
 
 if __name__ == "__main__":
+    
+    # Protect GPU-specific imports so the other stuff can be imported without torch etc.
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from multicamera_keypoints.v0.convnet import ConvNet
+
     main()

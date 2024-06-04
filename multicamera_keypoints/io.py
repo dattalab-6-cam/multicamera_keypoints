@@ -76,6 +76,7 @@ def add_videos_to_config(
     # Find the existing videos
     config = load_config(project_dir)
     existing_vid_info = config["VID_INFO"]
+    existing_session_info = config["SESSION_INFO"]
 
     # Remove videos that are already in the config if not overwriting
     if not overwrite:
@@ -91,10 +92,38 @@ def add_videos_to_config(
     # Add key/val pairs specific to each processing step
     for vid_info in new_vid_info.values():
         vid_info.update({f"{step}_done": False for step in PROCESSING_STEPS})
+
+    # Parse videos into sessions
+    sessions = [v["session_name"] for v in new_vid_info.values()]
+    session_dirs = [os.path.dirname(v["video_path"]) for v in new_vid_info.values()]
+    uq_pairings = list(set(list(zip(sessions, session_dirs))))
+    new_session_info = {}
+    for session, _dir in uq_pairings:
+        new_session_info[session] = {
+            "videos": [], 
+            "CALIBRATION_done": False,
+            "TRIANGULATION_done": False,
+            "GIMBAL_done": False,
+            "video_dir": _dir,
+            "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
+        }
+    
+    # Add list of videos to each session
+    for vid_name in new_vid_info:
+        s = new_vid_info[vid_name]["session_name"]
+        new_session_info[s]["videos"].append(vid_name)
     
     # Update the config
     existing_vid_info.update(new_vid_info)
-    update_config(project_dir, {"VID_INFO": existing_vid_info}, verbose=False)
+    existing_session_info.update(new_session_info)
+    update_config(
+        project_dir, 
+        {
+            "VID_INFO": existing_vid_info,
+            "SESSION_INFO": existing_session_info,
+        },
+        verbose=False
+    )
 
     # Report to user 
     print(f"Added {len(new_vid_info)} video(s) to config")
@@ -217,8 +246,6 @@ def generate_config(
     -------
     None
     """
-
-    # import pdb
 
     # Prevent overwriting existing config file
     config_path = join(project_dir, config_name)
@@ -464,12 +491,10 @@ def update_config(project_dir, new_config, verbose=True):
     None
     """
     update_msgs = []
-    import pdb
+    
 
     def recursive_update(config, updates):
         for key, value in updates.items():
-            # if key == "func_args" and "calib_file" in config[key]:
-                # pdb.set_trace()
             if key in config and isinstance(config[key], dict):
                 # If the key is a dictionary, recurse
                 recursive_update(config[key], value)

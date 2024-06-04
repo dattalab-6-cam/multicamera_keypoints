@@ -144,24 +144,22 @@ def generate_outlier_probs(
 @click.argument("vid_dir")
 @click.argument("calib_file")
 @click.argument("gimbal_params_file")
-@click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 @click.option(
     "--checkpoint_niters",
     default=500,
     help="Number of iterations between saving checkpoints",
 )
+@click.option("--output_name", default="gimbal.npy", help="Suffix to add to output name")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 def main(
-    vid_dir, calib_file, gimbal_params_file, overwrite=False, checkpoint_niters=500
+    vid_dir,
+    calib_file,
+    gimbal_params_file, 
+    checkpoint_niters=500, 
+    output_name=None,
+    overwrite=False, 
 ):
     
-    from keypoint_moseq.util import get_edges
-    from keypoint_sort.util import build_node_hierarchy
-    import gimbal
-    import h5py
-    import jax
-    import jax.numpy as jnp
-    import jax.random as jr
-    jax.config.update("jax_enable_x64", False)
     print("Running gimbal smoothing on ", vid_dir)
 
     # Hard-coded KP params -- fix this
@@ -199,10 +197,13 @@ def main(
         ["spine_high", "right_fore_paw"],
     ]
 
+    # Check output name
+    assert output_name.endswith(".npy"), "Output name must end with .npy"
+
     # Check that the output file doesn't already exist
     triang_file = find_files_from_pattern(vid_dir, "*.robust_triangulation.npy")
     session_name = os.path.basename(triang_file).split(".")[0]
-    gimbal_out_file = os.path.join(vid_dir, f"{session_name}.gimbal.npy")
+    gimbal_out_file = os.path.join(vid_dir, f"{session_name}.{output_name}")
     ll_out_file = os.path.join(vid_dir, f"{session_name}.ll.npy")
     if os.path.exists(gimbal_out_file) and not overwrite:
         print(f"Output file {gimbal_out_file} already exists. Exiting.")
@@ -297,10 +298,19 @@ def main(
     np.save(gimbal_out_file, positions_mean)
     np.save(ll_out_file, log_likelihood)
 
-    print(f"Saved gimbal positions to {vid_dir}/gimbal.npy")
+    print(f"Saved gimbal positions to {gimbal_out_file}")
 
     return
 
 
 if __name__ == "__main__":
+    from keypoint_moseq.util import get_edges
+    from keypoint_sort.util import build_node_hierarchy
+    import gimbal
+    import h5py
+    import jax
+    import jax.numpy as jnp
+    import jax.random as jr
+    jax.config.update("jax_enable_x64", False)
+    
     main()

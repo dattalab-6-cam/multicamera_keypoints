@@ -74,7 +74,7 @@ def make_config(
             "output_info": {
                 "output_name": output_name,
             },
-            "step_dependencies": step_dependencies,
+            "step_dependencies": [],  # TODO: doesn't really work to put HRNET here, since HRNET is at hte video level and this is at the session level.
     }
 
     return triang_config, step_name
@@ -83,8 +83,10 @@ def make_config(
 @click.command()
 @click.argument("vid_dir")
 @click.argument("calib_file")
+@click.option("--conf_threshold", default=0.25, help="Confidence threshold for keypoint detection, below which detections are ignored for the triangulation step.")
+@click.option("--output_name", default="robust_triangulation.npy", help="Suffix to be appended to the name of the video to make the output file name.")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
-def main(vid_dir, calib_file, overwrite=False):
+def main(vid_dir, calib_file, conf_threshold=0.25, output_name="robust_triangulation.npy", overwrite=False):
     print(f"Triangulating vids in dir {vid_dir} with calib file {calib_file}...")
 
     all_extrinsics, all_intrinsics, camera_names = mcc.load_calibration(
@@ -92,7 +94,8 @@ def main(vid_dir, calib_file, overwrite=False):
     )
 
     session_name = os.path.basename(vid_dir)
-    out_name = join(vid_dir, session_name + ".robust_triangulation.npy")
+    assert output_name.endswith(".npy"), "Output name must end with .npy"
+    out_name = join(vid_dir, session_name + "." + output_name)
     print(out_name)
 
     # Stop if file exists
@@ -108,7 +111,7 @@ def main(vid_dir, calib_file, overwrite=False):
             with h5py.File(kp_file, "r") as h5:
                 uvs = h5["uv"][()]
                 confs = h5["conf"][()]
-                uvs[confs < 0.25] = np.nan  # remove low confidence detections
+                uvs[confs < conf_threshold] = np.nan  # remove low confidence detections
                 all_uvs.append(uvs)
         except OSError:
             warn(
