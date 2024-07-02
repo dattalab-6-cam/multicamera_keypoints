@@ -203,15 +203,22 @@ def _prepare_video_config(video_paths, vid_steps, session_steps):
             "video_dir": _dir,
             "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
             **{f"{step}_done": False for step in session_steps},
-            # "CALIBRATION_done": False,
-            # "TRIANGULATION_done": False,
-            # "GIMBAL_done": False,
         }
     
     # Add list of videos to each session
     for vid_name in new_vid_info:
-        s = new_vid_info[vid_name]["session_name"]
-        new_session_info[s]["videos"].append(vid_name)
+        session = new_vid_info[vid_name]["session_name"]
+        new_session_info[session]["videos"].append(vid_name)
+
+    # Check whether all videos in a session have the same num frames
+    for session in new_session_info:
+        vids = new_session_info[session]["videos"]
+        nframes = [new_vid_info[v]["nframes"] for v in vids]
+        if len(set(nframes)) > 1:
+            print(f"Warning: Videos in session {session} have different lengths; cross-video frame alignment will be required.")
+            new_session_info[session]["alignment_required"] = True
+        else:
+            new_session_info[session]["alignment_required"] = False
 
     return new_vid_info, new_session_info
 
