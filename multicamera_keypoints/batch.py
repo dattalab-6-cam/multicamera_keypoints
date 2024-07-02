@@ -1,6 +1,7 @@
 import os
-from os.path import join
+from os.path import join, exists
 import datetime
+import re
 import time
 import warnings
 
@@ -8,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from multicamera_keypoints.vid_utils import count_frames_cached
-from multicamera_keypoints.io import load_config, update_config, save_config, PROCESSING_STEPS
+from multicamera_keypoints.io import load_config, update_config, save_config
 from multicamera_keypoints.file_utils import is_file_openable_and_contains_data
 # from multicamera_keypoints.file_utils import find_files_from_pattern
 from o2_utils.selectors import find_files_from_pattern
@@ -133,6 +134,10 @@ def _prepare_sessions_for_batch(project_dir, processing_step, increment_time_fra
     for session_name, session_info in config["SESSION_INFO"].items():
 
         ### Confirm that the session is ready for processing  ###
+        # TODO: abstract this out of the batch script code, and into the v0 code.
+        # The config should contain enough meta-info about the desired order of the pipeline steps
+        # that this batch code can check if the session is ready for processing, without knowing
+        # anything specific about the steps themselves.
         # for each video in the session, check in the video info that centernet and hrnet are done
         ready_for_processing = True
         for video in session_info["videos"]:
@@ -286,19 +291,26 @@ def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, ove
         out_file = join(config[processing_step]["slurm_params"]["step_dir"], f"{processing_step}_batch_{now}.sh")
         
         with open(out_file, "a") as f:
+
+            # Add the arguments, and update them for this item with .format()
             args_str = " ".join([arg for arg in config[processing_step]["func_args"].values()]).format(**item_info)
+
+            # Add any kwargs for this step
             if "func_kwargs" in config[processing_step]:
                 kwargs_str = " ".join([f"--{k} {v}" if not isinstance(v, bool) else f"--{k}" for k, v in config[processing_step]["func_kwargs"].items()])
             else:
                 kwargs_str = ""
+
+            # Add output name info if present
             if "output_name" in config[processing_step]["output_info"]:
                 kwargs_str = kwargs_str + f" --output_name {config[processing_step]['output_info']['output_name']}"
+
+            # Add overwrite flag if needed
             if overwrite:
                 args_str = args_str + " --overwrite"
-            full_cmd = cmd.format(args=args_str, kwargs=kwargs_str)
 
-            # Finally, add item-specific arguments (ie path to a specific video)
-            full_cmd = cmd.format(args=args_str)  # TODO: this could probably be part of _make_wrap_cmd
+            # Combine the args + kwargs with the command
+            full_cmd = cmd.format(args=args_str, kwargs=kwargs_str)
 
             # Write to file
             f.write(full_cmd)
@@ -415,7 +427,7 @@ def _make_wrap_cmd(
         '\'eval "$(conda shell.bash hook)"; '
         f'conda activate {conda_env}; '
         f'{module_load_str} '
-        f'python {func_path} {{args}}\''
+        f'python {func_path} {{args}} {{kwargs}}\''
     )
     
     return wrap_str
@@ -614,9 +626,9 @@ def verify_compression_outputs_by_size(project_dir, processing_step, overwrite=F
 
     for vid_name, vid_info in config["VID_INFO"].items():
         if vid_info[comprn_key] and not overwrite:
+            n_compressed += 1
             continue
     
-
         actual_kb_per_fr = os.path.getsize(vid_info["video_path"]) / vid_info["nframes"] / 1024
 
         if actual_kb_per_fr < expected_kb_per_fr:
@@ -659,20 +671,29 @@ def verify_outputs(project_dir, processing_step, overwrite=False):
     output_name = config[processing_step]["output_info"]["output_name"]
 
     # Find the videos to be checked
-    if any([base_step in processing_step  for base_step in ["CENTERNET", "HRNET"]]):
-        section = "VID_INFO"
-        def output_file_getter(vid_info):
-            return vid_info["video_path"].replace("mp4", output_name)
-    elif any([base_step in processing_step for base_step in ["TRIANGULATION", "GIMBAL"]]):
-        section = "SESSION_INFO"
-        def output_file_getter(vid_info):
-            return join(vid_info["video_dir"], os.path.basename(vid_info["video_dir"]) + "." + output_name)
-    elif processing_step == "CALIBRATION":
+    proc_level = config[processing_step]["pipeline_info"]["processing_level"]
+
+    if proc_level == "calibration":
         section = "CALIBRATION_VIDEOS"
         def output_file_getter(vid_info):
             return join(vid_info["video_dir"], os.path.basename(vid_info["video_dir"]) + "." + output_name)
+
+    elif proc_level == "video" and "COMPRESSION" in processing_step:
+        section = "VID_INFO"
+        def output_file_getter(vid_info):
+            return vid_info["video_path"].replace("mp4", f"{output_name}.mp4")
+        
+    elif proc_level == "video":
+        section = "VID_INFO"
+        def output_file_getter(vid_info):
+            return vid_info["video_path"].replace("mp4", output_name)
+
+    elif proc_level == "session":
+        section = "SESSION_INFO"
+        def output_file_getter(vid_info):
+            return join(vid_info["video_dir"], os.path.basename(vid_info["video_dir"]) + "." + output_name)
     else:
-        raise ValueError("Processing step not recognized")
+        raise ValueError(f"Processing level {proc_level} not recognized")
 
     good_files = []
     incomplete_files = []
@@ -745,8 +766,72 @@ def summarize_progress(project_dir):
     return
 
 
-def evaluate_failed_jobs(jobids):
-    """For a list of jobids, evaluate if they failed, and if so, try to determine why.
+def evaluate_jobs_from_script(project_dir, processing_step=None, script=None):
+    """Evaluate the status of jobs from a script.
+
+    Parameters
+    ----------
+    project_dir : str
+        Path to the project directory
+
+    processing_step : str
+        The processing step to evaluate.
+        By default, evaluates the most recent script.
+
+    script : str
+        Path to the script, relative or absolute.
+        If a relative path is given that doesn't exist, we check relative to the step_dir.
+
+    Returns
+    -------
+    None
+    """
+
+    # Load the project config
+    project_dir = os.path.abspath(project_dir)
+    config = load_config(project_dir)
+
+    if processing_step is None and script is None:
+        raise ValueError("Need to provide a processing step or a script to evaluate.")
+    elif processing_step is not None and script is None:
+        # Find the most recent slurm script in the directory
+        scripts = find_files_from_pattern(
+            config[processing_step]["slurm_params"]["step_dir"],
+            f"{processing_step}_batch_*.sh",
+            n_expected=-1,
+        )
+        if isinstance(scripts, list):
+            script = sorted(scripts)[-1]
+        elif isinstance(scripts, str):
+            script = scripts
+    elif processing_step is None and script is not None:
+        # figure out which processing step it is based on the script name
+        processing_step = os.path.basename(script.split("_")[0])
+
+    # Load the script
+    if not exists(script):
+        if processing_step is None:
+            raise ValueError("No processing step given but script not found.")
+        script = join(config[processing_step]["slurm_params"]["step_dir"], script)
+        if not exists(script):
+            raise ValueError("Script not found")
+
+    # The scripts are named liked this: CENTERNET_batch_2024-06-03_23-52-51.sh
+    # And all the slurm outs from a given script have that date in the filename
+    script_date = os.path.basename(script).split("batch_")[-1].split(".")[0]
+    job_out_files = find_files_from_pattern(
+        config[processing_step]["slurm_params"]["slurm_out_dir"], 
+        f"slurm*{script_date}*.out",
+        n_expected=-1,
+    )
+    jobids = [int(f.split("_")[-1].split(".")[0]) for f in job_out_files]
+
+    # Evaluate the jobs
+    return evaluate_job_status(jobids)
+
+
+def evaluate_job_status(jobids):
+    """For a list of jobids, determine their status
 
     Parameters
     ----------
@@ -757,6 +842,9 @@ def evaluate_failed_jobs(jobids):
     -------
     job_info : dict
         Dictionary containing information about the jobs
+
+    completed_jobs: list of str
+        List of jobids that completed successfully
     
     failed_jobs : list of str
         List of jobids that failed
@@ -765,6 +853,7 @@ def evaluate_failed_jobs(jobids):
         List of jobids that timed out
     """
     job_info = {}
+    completed_jobs = []
     failed_jobs = []
     timedout_jobs = []
     for jobid in jobids:
@@ -774,11 +863,14 @@ def evaluate_failed_jobs(jobids):
             failed_jobs.append(jobid)
         elif status == "TIMEOUT" or status == "CANCELLED":
             timedout_jobs.append(jobid)
+        elif status == "COMPLETED":
+            completed_jobs.append(jobid)
 
+    print(f"{len(completed_jobs)} completed: {completed_jobs}")
     print(f"{len(failed_jobs)} failed: {failed_jobs}")
     print(f"{len(timedout_jobs)} timed out: {timedout_jobs}")
 
-    return job_info, failed_jobs, timedout_jobs
+    return job_info, completed_jobs, failed_jobs, timedout_jobs
 
 
 def evaluate_resource_usage(jobids, plot=True):

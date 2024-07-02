@@ -2,6 +2,7 @@ import os
 from os.path import exists, join
 from pathlib import Path
 from textwrap import fill
+import time
 
 import yaml
 from o2_utils.selectors import find_files_from_pattern
@@ -13,7 +14,7 @@ import multicamera_keypoints.v0 as mkv0
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
-PROCESSING_STEPS = ["CENTERNET", "HRNET", "TRIANGULATION", "GIMBAL"]  # not including calibration and whatnot
+# PROCESSING_STEPS = ["CENTERNET", "HRNET", "TRIANGULATION", "GIMBAL"]  # not including calibration and whatnot
 
 config_comments = {
     "slurm_params": "parameters for submitting jobs to slurm",
@@ -77,8 +78,12 @@ def add_videos_to_config(
     config = load_config(project_dir)
     existing_vid_info = config["VID_INFO"]
     existing_session_info = config["SESSION_INFO"]
+    
+    # Get the processing steps in this config
+    VID_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in k and k["pipeline_info"]["processing_level"] == "video")]
+    SESSION_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in k and (k["pipeline_info"]["processing_level"] == "session" or k["pipeline_info"]["processing_level"] == "calibration"))]
 
-    # Remove videos that are already in the config if not overwriting
+    # Remove videos that are already in the config from list of vids to add, if not overwriting
     if not overwrite:
         video_paths = {v for v in video_paths if os.path.basename(v.split(".mp4")[0]) not in existing_vid_info}
 
@@ -86,33 +91,9 @@ def add_videos_to_config(
         print("No new videos to add to config")
         return
 
-    # Get info about the new videos (just frame num and path for now)
-    new_vid_info = _get_video_info(video_paths)
+    # Get info about the new videos
+    new_vid_info, new_session_info = _prepare_video_config(video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS)
 
-    # Add key/val pairs specific to each processing step
-    for vid_info in new_vid_info.values():
-        vid_info.update({f"{step}_done": False for step in PROCESSING_STEPS})
-
-    # Parse videos into sessions
-    sessions = [v["session_name"] for v in new_vid_info.values()]
-    session_dirs = [os.path.dirname(v["video_path"]) for v in new_vid_info.values()]
-    uq_pairings = list(set(list(zip(sessions, session_dirs))))
-    new_session_info = {}
-    for session, _dir in uq_pairings:
-        new_session_info[session] = {
-            "videos": [], 
-            "CALIBRATION_done": False,
-            "TRIANGULATION_done": False,
-            "GIMBAL_done": False,
-            "video_dir": _dir,
-            "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
-        }
-    
-    # Add list of videos to each session
-    for vid_name in new_vid_info:
-        s = new_vid_info[vid_name]["session_name"]
-        new_session_info[s]["videos"].append(vid_name)
-    
     # Update the config
     existing_vid_info.update(new_vid_info)
     existing_session_info.update(new_session_info)
@@ -202,6 +183,39 @@ def _get_video_info(video_paths):
     return vid_info
 
 
+def _prepare_video_config(video_paths, vid_steps, session_steps):
+
+    # Get info about the new videos (just frame num and path for now)
+    new_vid_info = _get_video_info(video_paths)
+
+    # Add key/val pairs specific to each processing step
+    for vid_info in new_vid_info.values():
+        vid_info.update({f"{step}_done": False for step in vid_steps})
+
+    # Parse videos into sessions
+    sessions = [v["session_name"] for v in new_vid_info.values()]
+    session_dirs = [os.path.dirname(v["video_path"]) for v in new_vid_info.values()]
+    uq_pairings = list(set(list(zip(sessions, session_dirs))))
+    new_session_info = {}
+    for session, _dir in uq_pairings:
+        new_session_info[session] = {
+            "videos": [], 
+            "video_dir": _dir,
+            "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
+            **{f"{step}_done": False for step in session_steps},
+            # "CALIBRATION_done": False,
+            # "TRIANGULATION_done": False,
+            # "GIMBAL_done": False,
+        }
+    
+    # Add list of videos to each session
+    for vid_name in new_vid_info:
+        s = new_vid_info[vid_name]["session_name"]
+        new_session_info[s]["videos"].append(vid_name)
+
+    return new_vid_info, new_session_info
+
+
 def generate_config(
     project_dir, video_paths, weights_path, gimbal_params_path, non_default_config=None, overwrite=False
 ):
@@ -276,37 +290,32 @@ def generate_config(
     step_config, step_name = mkv0.gimbal_smoothing.make_config(PACKAGE_DIR, gimbal_params_path)
     sections.append((step_name, step_config))
 
-
     # Get video info
-    all_vid_info = _get_video_info(video_paths)
+    # all_vid_info = _get_video_info(video_paths)
 
-    # Add key/val pairs specific to each processing step
-    for vid_info in all_vid_info.values():
-        vid_info.update({"CENTERNET_done": False, "HRNET_done": False})
+    # # Add key/val pairs specific to each processing step
+    # for vid_info in all_vid_info.values():
+    #     vid_info.update({"CENTERNET_done": False, "HRNET_done": False})
 
-    # Parse videos into sessions
-    sessions = [v["session_name"] for v in all_vid_info.values()]
-    session_dirs = [os.path.dirname(v["video_path"]) for v in all_vid_info.values()]
-    uq_pairings = list(set(list(zip(sessions, session_dirs))))
-    all_session_info = {}
-    for session, _dir in uq_pairings:
-        all_session_info[session] = {
-            "videos": [], 
-            "CALIBRATION_done": False,
-            "TRIANGULATION_done": False,
-            "GIMBAL_done": False,
-            "video_dir": _dir,
-            "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
-        }
+    # # Parse videos into sessions
+    # sessions = [v["session_name"] for v in all_vid_info.values()]
+    # session_dirs = [os.path.dirname(v["video_path"]) for v in all_vid_info.values()]
+    # uq_pairings = list(set(list(zip(sessions, session_dirs))))
+    # all_session_info = {}
+    # for session, _dir in uq_pairings:
+    #     all_session_info[session] = {
+    #         "videos": [], 
+    #         "CALIBRATION_done": False,
+    #         "TRIANGULATION_done": False,
+    #         "GIMBAL_done": False,
+    #         "video_dir": _dir,
+    #         "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
+    #     }
     
-    # Add list of videos to each session
-    for vid_name in all_vid_info:
-        s = all_vid_info[vid_name]["session_name"]
-        all_session_info[s]["videos"].append(vid_name)
-    
-    # Add to the config!
-    sections.append(("VID_INFO", all_vid_info))
-    sections.append(("SESSION_INFO", all_session_info))
+    # # Add list of videos to each session
+    # for vid_name in all_vid_info:
+    #     s = all_vid_info[vid_name]["session_name"]
+    #     all_session_info[s]["videos"].append(vid_name)
 
     # Misc other required info
     other = {
@@ -324,6 +333,14 @@ def generate_config(
     config = load_config(project_dir)
     if non_default_config is not None:
         update_config(config, non_default_config)
+
+    # Add videos to the config!
+    time.sleep(1)  # wait for file to be written
+    config = load_config(project_dir)
+    VID_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in config[k] and config[k]["pipeline_info"]["processing_level"] == "video")]
+    SESSION_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in config[k] and (config[k]["pipeline_info"]["processing_level"] == "session" or config[k]["pipeline_info"]["processing_level"] == "calibration"))]
+    all_vid_info, all_session_info = _prepare_video_config(video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS)
+    update_config(project_dir, {"VID_INFO": all_vid_info, "SESSION_INFO": all_session_info}, verbose=False)
 
     return
 
