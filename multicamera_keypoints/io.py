@@ -127,7 +127,7 @@ def add_calibrations_to_config(
         calibration_paths = {v for v in calibration_paths if os.path.basename(v.split(".mp4")[0]) not in existing_calib_info}
 
     # Get info about the new calibrations
-    _vid_info = _get_video_info([find_files_from_pattern(p, "*.top.mp4", n_expected=1, error_behav="raise") for p in calibration_paths])
+    _vid_info = _get_video_info([find_files_from_pattern(p, "*.top*.mp4", n_expected=1, error_behav="raise") for p in calibration_paths])
     calib_info = {}
     for (calib_name, vid_info), calib_path in zip(_vid_info.items(), calibration_paths):
         short_name = calib_name.split(".")[0]
