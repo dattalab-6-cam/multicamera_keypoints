@@ -249,6 +249,14 @@ def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, ove
     
     n_cmds = 0
 
+    # Prepare an output file
+    out_file = join(config[processing_step]["slurm_params"]["step_dir"], f"{processing_step}_batch_{now}.sh")
+
+    # Add sbatch alias if required
+    if sbatch_alias is not None:
+        with open(out_file, "w") as f:
+            f.write(f"#!/usr/bin/zsh\n\nsetopt aliases\n alias sbatch_alias={sbatch_alias}\n\n")
+
     # For each video / session
     for item_name, item_info in config[config_info_key].items():
 
@@ -279,6 +287,7 @@ def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, ove
             **config[processing_step]['slurm_params'],
             slurm_out_prefix=f"{processing_step}_{item_name}_{now}",
             job_name=f"{item_name}_{processing_step}",
+            sbatch_alias=(sbatch_alias is not None),
         )
 
         # Format the python command with conda env / modules / python script to use.
@@ -286,9 +295,6 @@ def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, ove
 
         # Creat the full command
         cmd = slurm_cmd + wrap_cmd
-
-        # Prepare an output file
-        out_file = join(config[processing_step]["slurm_params"]["step_dir"], f"{processing_step}_batch_{now}.sh")
         
         with open(out_file, "a") as f:
 
@@ -342,6 +348,7 @@ def _make_slurm_cmd(
     job_name,
     slurm_out_dir,
     slurm_out_prefix,
+    sbatch_alias=False,
     **kwargs,
 ):
     """Generate an sbatch command for slurm.
@@ -369,6 +376,13 @@ def _make_slurm_cmd(
     slurm_out_prefix : str
         Prefix for the slurm output files
 
+    sbatch_alias : bool, optional
+        If True, assume there is an alias for "sbatch_alias" defined in the script, which will be used in place of the sbatch command.
+        If False, assume the sbatch command is just "sbatch".
+
+    kwargs : dict
+        Captures additional unused kwargs.
+
     Returns
     -------
     slurm_str : str
@@ -380,8 +394,13 @@ def _make_slurm_cmd(
     else:
         partition = "short"
 
+    if sbatch_alias:
+        start = "sbatch_alias"
+    else:
+        start = "sbatch"
+
     slurm_str = (
-        'sbatch '
+        f'{start} '
         f'-p {partition} '
         f'-t {time} '
         f'--mem {mem} '
