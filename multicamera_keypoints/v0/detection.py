@@ -1,5 +1,5 @@
 import os
-from os.path import join
+from os.path import join, exists
 
 import click
 import cv2
@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import tqdm
 from o2_utils.selectors import find_files_from_pattern
+import pandas as pd
 from scipy.ndimage import median_filter
 from vidio.read import OpenCVReader
 
@@ -121,24 +122,11 @@ def make_kp_detection_quality_plots(project_dir, processing_step="HRNET", relati
     
     for session, session_info in config["SESSION_INFO"].items():
 
-        # open the hrnet detections and get the conf values
+        # Prep some vars
         video_dir = session_info["video_dir"]
         video_names = session_info["videos"]
         detection_uvs = {}
-        conf_fig, conf_axs = plt.subplots(1, 3, figsize=(9,3))  # will show histograms of kp confidences, for paws, head, and spine kps
-        conf_heatmap_fig, conf_heatmap_axs = plt.subplots(3, 3, figsize=(12,9))  # will show heatmap of confidences over time
-        conf_heatmap_axs = conf_heatmap_axs.ravel()
-        dist_fig, dist_axs = plt.subplots(1, len(low_var_distance_pairs), figsize=(6,3))  # will show histograms of distances between low-variance pairs of kps
-        dist_axs = {k: ax for k, ax in zip(low_var_distance_pairs.keys(), dist_axs)}
-        temporal_fig, temporal_axs = plt.subplots(4, 4, figsize=(12,12))  # will show histograms of frame-to-frame displacement for each kp
-        temporal_axs = temporal_axs.ravel()
-
-        # Check that there are enough detection files to proceed
-        detn_files = [join(video_dir, v + "." + output_name) for v in video_names]
-        n_existing_detn_files = sum([os.path.exists(f) for f in detn_files])
-        if n_existing_detn_files <= 1:
-            print(f"Skipping session {session} because only {n_existing_detn_files} detection files found")
-            continue
+        all_camera_confs = []
 
         # Check if the output files already exist
         # (Just uses one figure as a proxy for them all, for now)
@@ -147,9 +135,38 @@ def make_kp_detection_quality_plots(project_dir, processing_step="HRNET", relati
             print(f"Skipping session {session} because output files already exist")
             continue
 
+        # Check that there are enough detection files to proceed
+        detn_files = [join(video_dir, v + "." + output_name) for v in video_names]
+        n_existing_detn_files = sum([os.path.exists(f) for f in detn_files])
+        if n_existing_detn_files <= 1:
+            print(f"Skipping session {session} because only {n_existing_detn_files} detection files found")
+            continue
+
+        # Check if alignment is required, if so look for alignment file in the video dir
+        if session_info["alignment_required"]:
+            alignment_file = join(session_info["video_dir"], "aligned_frame_numbers.csv")
+            if not exists(alignment_file):
+                print(f"Skipping session {session} because alignment file {alignment_file} not found")
+                continue
+            align_df = pd.read_csv(alignment_file)  # cols are top, bottom, side1, ..., side4, trigger_number
+            max_n_frames = align_df.shape[0]
+        else:
+            vid = session_info["videos"][0]
+            max_n_frames = config["VID_INFO"][vid]["nframes"]
+            align_df = pd.DataFrame(
+                {(video.split(".")[1]): np.arange(max_n_frames) for video in session_info["videos"]}
+            )
+
+        # Prepare figures
+        conf_fig, conf_axs = plt.subplots(1, 3, figsize=(9,3))  # will show histograms of kp confidences, for paws, head, and spine kps
+        conf_heatmap_fig, conf_heatmap_axs = plt.subplots(3, 3, figsize=(12,9))  # will show heatmap of confidences over time
+        conf_heatmap_axs = conf_heatmap_axs.ravel()
+        dist_fig, dist_axs = plt.subplots(1, len(low_var_distance_pairs), figsize=(6,3))  # will show histograms of distances between low-variance pairs of kps
+        dist_axs = {k: ax for k, ax in zip(low_var_distance_pairs.keys(), dist_axs)}
+        temporal_fig, temporal_axs = plt.subplots(4, 4, figsize=(12,12))  # will show histograms of frame-to-frame displacement for each kp
+        temporal_axs = temporal_axs.ravel()
 
         # Loop over the videos in this session
-        all_camera_confs = []
         for i, v in enumerate(video_names):
             camera = v.split(".")[1]
             
@@ -159,9 +176,16 @@ def make_kp_detection_quality_plots(project_dir, processing_step="HRNET", relati
                 detection_uvs[v] = None
                 continue
             array_dict = load_arrays_from_h5(detn_file)
-            raw_uvs = array_dict["uv"]
-            confs = array_dict["conf"]
-            all_camera_confs.append(confs)
+            raw_uvs = array_dict["uv"]  # shape (n_frames, n_kps, 2)
+            confs = array_dict["conf"] # shape (n_frames, n_kps)
+
+            # Align the detections to the video frames
+            aligned_confs = np.nan * np.zeros((max_n_frames, confs.shape[1]))
+            align_vec = align_df[camera].values
+            aligned_confs[~pd.isnull(align_vec), :] = confs
+            all_camera_confs.append(aligned_confs)
+
+            # Set low-conf detections to nan
             cleaned_uvs = raw_uvs.copy()
             cleaned_uvs[confs < conf_threshold] = np.nan
             
