@@ -94,7 +94,7 @@ def main(video_dir, board_shape, square_size, output_name="camera_params.h5", ov
 
     board_shape = tuple(map(int, board_shape.split("x")))
     camera_names = ["top", "side1", "side2", "side3", "side4", "bottom"]
-    video_paths = [find_files_from_pattern(video_dir, f"*.{camera}.mp4") for camera in camera_names]
+    video_paths = [find_files_from_pattern(video_dir, f"*.{camera}*.mp4") for camera in camera_names]
     video_basename = basename(video_paths[0]).split(".")[0]  # remove the camera name --> 20240422_J04301
 
     # Check for potential overwriting 
