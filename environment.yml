@@ -29,4 +29,3 @@ dependencies:
   - scikit-image
   - scipy
   - seaborn
-  - statsmodels
