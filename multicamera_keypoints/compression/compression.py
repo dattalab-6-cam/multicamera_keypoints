@@ -194,7 +194,7 @@ def main(
         replace_original = False
     elif delete_original is True and output_name_suffix is not None:
         output_vid = video_path.replace(".mp4", f".{output_name_suffix}.mp4")
-        replace_original = True  # TODO: this should be false.
+        replace_original = False
     elif delete_original is True and output_name_suffix is None:
         output_vid = video_path.replace(".mp4", ".tmp.mp4")
         replace_original = True
