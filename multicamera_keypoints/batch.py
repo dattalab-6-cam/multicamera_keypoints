@@ -1,19 +1,16 @@
-import os
-from os.path import join, exists
 import datetime
-import re
+import os
 import time
 import warnings
+from os.path import exists, join
 
-import numpy as np
 import matplotlib.pyplot as plt
-
-from multicamera_keypoints.vid_utils import count_frames_cached
-from multicamera_keypoints.io import load_config, update_config, save_config
-from multicamera_keypoints.file_utils import is_file_openable_and_contains_data
-# from multicamera_keypoints.file_utils import find_files_from_pattern
 from o2_utils.selectors import find_files_from_pattern
 from o2_utils.slurm import get_job_info
+
+from multicamera_keypoints.file_utils import is_file_openable_and_contains_data
+from multicamera_keypoints.io import load_config, save_config, update_config
+from multicamera_keypoints.vid_utils import count_frames_cached
 
 
 def format_time_from_sec(seconds):
@@ -146,7 +143,7 @@ def _prepare_sessions_for_batch(project_dir, processing_step, increment_time_fra
                     ready_for_processing = False
                     
         # Check that the calibration file 1) exists 2) has been processed
-        if session_info["calibration"] is None:
+        if ("calibration" not in session_info) or session_info["calibration"] is None:
             ready_for_processing = False  # no calibration file has been matched to this session yet
         elif session_info["calibration"] is not None:
             calib_info = config["CALIBRATION_VIDEOS"][session_info["calibration"]]
@@ -172,7 +169,7 @@ def _prepare_sessions_for_batch(project_dir, processing_step, increment_time_fra
     )
 
 
-def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, overwrite=False):
+def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, sbatch_alias=None, overwrite=False):
     """Prepare a batch script for a processing step.
 
     This function is fairly agnostic to the specific processing step going on.
@@ -196,6 +193,11 @@ def prepare_batch(project_dir, processing_step, increment_time_fraction=1.0, ove
     increment_time_fraction : float, optional
         If given, the time requested for each job is multiplied by this factor.
         Useful for when a few jobs fail due to timeout and you need to re-run.
+
+    sbatch_alias : str, optional
+        If given, the alias to use for the sbatch command.
+        Eg: 'sbatch --qos=gpuquad_qos -p gpu_quad,gpu -x "compute-g-16-175,compute-g-16-176,compute-g-16-177,compute-g-16-194,compute-g-16-197,compute-g-16-254,compute-g-16-255,compute-g-17-[166-171]"'
+
 
     overwrite : bool
         If True, pass " --overwrite" to the processing script.
@@ -803,7 +805,18 @@ def evaluate_jobs_from_script(project_dir, processing_step=None, script=None):
 
     Returns
     -------
-    None
+
+    job_info : dict
+        Dictionary containing information about the jobs
+
+    completed_jobs: list of str
+        List of jobids that completed successfully
+    
+    failed_jobs : list of str
+        List of jobids that failed
+
+    timedout_jobs : list of str
+        List of jobids that timed out
     """
 
     # Load the project config
