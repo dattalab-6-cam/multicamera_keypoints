@@ -4,6 +4,8 @@ import warnings
 import numpy as np
 import h5py
 
+import av
+
 
 class GreaterThanExpectedMatchingFileError(Exception):
     def __init__(self, *args, **kwargs):
@@ -150,3 +152,14 @@ def is_file_openable_and_contains_data(file):
         except Exception as e:
             print(e)
             return False
+        
+    elif ext == ".mp4":
+        try:
+            container = av.open(file)
+            return len(container.streams) > 0
+        except Exception as e:
+            print(e)
+            return False
+        
+    else:
+        return False

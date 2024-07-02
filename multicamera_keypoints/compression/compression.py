@@ -63,6 +63,8 @@ def make_config(
     step_name : str
         The name of the detection step. (default: "COMPRESSION")
     """
+
+    # Name the step based on output name, if provided
     if output_name_suffix is not None:
         step_name = f"COMPRESSION.{output_name_suffix}"
     else:
@@ -70,6 +72,11 @@ def make_config(
 
     if step_dependencies is None:
         step_dependencies = []
+
+    # Add kwargs to compression kwargs dict
+    if output_name_suffix is not None:
+        compression_kwargs_dict["output_name_suffix"] = output_name_suffix
+    compression_kwargs_dict["delete_original"] = compression_overwrites_original
 
     compression_config = {
         "slurm_params": {
@@ -84,9 +91,12 @@ def make_config(
             "conda_env": "dataPy_torch2",  # TODO: make this dynamic?
         },
         "func_args": {"video_path": "{video_path}"},
-        "func_kwargs": compression_kwargs_dict | {"delete_original": compression_overwrites_original, "output_name_suffix": output_name_suffix},
-        "output_info": {"expected_post_comp_max_kb_per_frame": 25},
+        "func_kwargs": compression_kwargs_dict,
+        "output_info": {"expected_post_comp_max_kb_per_frame": 25, "output_name": output_name_suffix},
         "step_dependencies": step_dependencies,
+        "pipeline_info": {
+            "processing_level": "video",
+        }
     }
 
     return compression_config, step_name
@@ -184,7 +194,7 @@ def main(
         replace_original = False
     elif delete_original is True and output_name_suffix is not None:
         output_vid = video_path.replace(".mp4", f".{output_name_suffix}.mp4")
-        replace_original = True
+        replace_original = False
     elif delete_original is True and output_name_suffix is None:
         output_vid = video_path.replace(".mp4", ".tmp.mp4")
         replace_original = True

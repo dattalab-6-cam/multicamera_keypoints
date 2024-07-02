@@ -54,27 +54,30 @@ def make_config(
         step_dependencies = ["TRIANGULATION"]
 
     gimbal_config = {
-            "slurm_params": {
-                "mem": "8GB",
-                "gpu": True,
-                "sec_per_frame": sec_per_frame,
-                "ncpus": 1,
-                "jobs_in_progress": {},
-            },
-            "wrap_params": {
-                "func_path": join(PACKAGE_DIR, "v0", "gimbal_smoothing.py"),
-                "conda_env": "dataPy_KPMS_GIMBAL",  # TODO: make this dynamic
-                "modules": ["gcc/9.2.0", "ffmpeg", "cuda/11.7"],
-            },
-            "func_args": {  # NB: these args **must** be in the right order here.
-                "vid_dir": "{video_dir}",
-                "calib_file": "{calib_file}",
-                "gimbal_params_file": gimbal_params_path,
-            },
-            "output_info": {
-                "output_name": output_name,
-            },
-            "step_dependencies": step_dependencies,
+        "slurm_params": {
+            "mem": "8GB",
+            "gpu": True,
+            "sec_per_frame": sec_per_frame,
+            "ncpus": 1,
+            "jobs_in_progress": {},
+        },
+        "wrap_params": {
+            "func_path": join(PACKAGE_DIR, "v0", "gimbal_smoothing.py"),
+            "conda_env": "dataPy_KPMS_GIMBAL",  # TODO: make this dynamic
+            "modules": ["gcc/9.2.0", "ffmpeg", "cuda/11.7"],
+        },
+        "func_args": {  # NB: these args **must** be in the right order here.
+            "vid_dir": "{video_dir}",
+            "calib_file": "{calib_file}",
+            "gimbal_params_file": gimbal_params_path,
+        },
+        "output_info": {
+            "output_name": output_name,
+        },
+        "step_dependencies": step_dependencies,
+        "pipeline_info": {
+            "processing_level": "session",
+        },
     }
 
     return gimbal_config, step_name

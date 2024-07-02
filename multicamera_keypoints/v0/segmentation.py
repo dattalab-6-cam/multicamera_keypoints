@@ -53,6 +53,9 @@ def make_config(
         output_name = "centroid.npy"
         step_name = "CENTERNET"
 
+    if step_dependencies is None:
+        step_dependencies = []
+
     centernet_config = {
         "slurm_params": {
             "mem": "4GB",
@@ -75,9 +78,12 @@ def make_config(
             "output_name": output_name,
         },
         "step_dependencies": step_dependencies,
+        "pipeline_info": {
+            "processing_level": "video",
+        },
+
     }
     
-
     return centernet_config, step_name
 
 

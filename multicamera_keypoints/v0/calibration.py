@@ -64,6 +64,9 @@ def make_config(
         "output_info": {
             "output_name": output_name,  # saves an h5 file
         },
+        "pipeline_info": {
+            "processing_level": "calibration",
+        },
     }
 
     if step_dependencies is not None:
