@@ -8,7 +8,7 @@ A pipeline to go from 6-cam videos to usable keypoints.
 * `conda env create --file ./environment.yml --name multicamera_keypoints`
 * `pip install -e .`
 
-NB: you may have to fight with the github lines over https/ssh. If using ssh, then make sure you've configurd your github ssh to work from O2, and add the lines
+NB: you may have to fight with the github lines of the `environment.yml` file over https/ssh. If using ssh, then make sure you've configurd your github ssh to work from O2, and add the lines
 ```
 Host github.com
    StrictHostKeyChecking no
