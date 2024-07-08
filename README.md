@@ -13,6 +13,7 @@ Host github.com
    StrictHostKeyChecking no
 ```
 to your ~/.ssh/config file.
+Then run `chmod 600 ~/.ssh/config`.
 
 
 ## Overview
