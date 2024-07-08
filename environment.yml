@@ -10,21 +10,23 @@ dependencies:
   - pandas
   - pip
   - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu117
     - av
     - click
     - h5py
+    - imageio-ffmpeg
     - ipywidgets
     - opencv-python
     - timewizard
-    - torch==2.0.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-    - torchvision==0.15.2+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+    - torch==2.0.1+cu117 
+    - torchvision==0.15.2+cu117
     - tqdm
     - vidio
-    - yaml
-    - git+https://github.com/dattalab-6-cam/multicam-calibration
-    - git+https://github.com/dattalab-6-cam/o2-utils
-    - git+https://github.com/calebweinreb/gimbal
-    - git+https://github.com/calebweinreb/dynamax.git@parallel_hmm_posterior_sample
+    - PyYAML
+    - git+ssh://git@github.com/dattalab-6-cam/multicam-calibration
+    - git+ssh://git@github.com/dattalab-6-cam/o2-utils
+    - git+ssh://git@github.com/calebweinreb/gimbal
+    - git+ssh://git@github.com/calebweinreb/dynamax.git@parallel_hmm_posterior_sample
   - scikit-learn
   - scikit-image
   - scipy
