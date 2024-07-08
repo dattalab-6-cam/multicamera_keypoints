@@ -155,7 +155,10 @@ def _prepare_sessions_for_batch(project_dir, processing_step, increment_time_fra
         config["SESSION_INFO"][session_name]["ready_for_processing"] = ready_for_processing
         
         # Find nframes for each video in the session
-        nframes = config["VID_INFO"][session_info["videos"][0]]["nframes"]
+        if "QCVID" in processing_step:
+            nframes = config[processing_step]["func_kwargs"]["nframes"]
+        else:
+            nframes = config["VID_INFO"][session_info["videos"][0]]["nframes"]
 
         # Calculate how much time needed for each step of processing
         time_sec = int(increment_time_fraction * max(5*60, nframes * config[processing_step]["slurm_params"]["sec_per_frame"]))  # min 5 minutes
