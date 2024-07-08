@@ -1,6 +1,24 @@
 # multicamera_keypoints
 A pipeline to go from 6-cam videos to usable keypoints.
 
+## Install
+* `git clone https://github.com/dattalab-6-cam/multicamera_keypoints.git`
+* `cd multicamera_keypoints`
+* [do optional ssh fixes, see below]
+* `conda env create --file ./environment.yml --name multicamera_keypoints`
+* `pip install -e .`
+
+NB: you may have to fight with the github lines of the `environment.yml` file over https/ssh. If using ssh, then make sure you've [configured your github ssh](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) to work from O2, and add the lines
+```
+Host github.com
+   StrictHostKeyChecking no
+```
+to your ~/.ssh/config file.
+Then run `chmod 600 ~/.ssh/config`.
+
+
+## Overview
+
 Each step requires a config that has, at minimum, these components:
 
 * `slurm_params`: describes the SLURM sbatch job that will be used to run the step.
