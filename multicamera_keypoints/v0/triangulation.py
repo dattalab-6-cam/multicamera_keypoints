@@ -6,7 +6,10 @@ import click
 import h5py
 import multicam_calibration as mcc
 import numpy as np
+import pandas as pd
 import tqdm
+
+from o2_utils.selectors import find_files_from_pattern
 
 
 def make_config(
@@ -90,13 +93,18 @@ def make_config(
 @click.option("--output_name", default="robust_triangulation.npy", help="Suffix to be appended to the name of the video to make the output file name.")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 def main(vid_dir, calib_file, conf_threshold=0.25, output_name="robust_triangulation.npy", overwrite=False):
+    
+    # Report start to user
     print(f"Triangulating vids in dir {vid_dir} with calib file {calib_file}...")
 
-    all_extrinsics, all_intrinsics, camera_names = mcc.load_calibration(
-        calib_file, "gimbal"
-    )
-
-    session_name = os.path.basename(vid_dir)
+    # Find the keypoint files in the directory
+    kp_files = find_files_from_pattern(vid_dir, "*.keypoints.h5", n_expected=-1)
+    if len(kp_files) == 0:
+        print(f"No keypoint files found in {vid_dir}, exiting.")
+        return
+    
+    # Prepare output info
+    session_name = os.path.basename(kp_files[0]).split(".")[0]
     assert output_name.endswith(".npy"), "Output name must end with .npy"
     out_name = join(vid_dir, session_name + "." + output_name)
     print(out_name)
@@ -106,16 +114,47 @@ def main(vid_dir, calib_file, conf_threshold=0.25, output_name="robust_triangula
         print(f"{os.path.basename(out_name)} exists, exiting...")
         return
 
+    # Load the calibration data
+    all_extrinsics, all_intrinsics, camera_names = mcc.load_calibration(
+        calib_file, "gimbal"
+    )
+
+    # Match kp files to camera names
+    kp_files = [[f for f in kp_files if c in f][0] for c in camera_names]
+    print(camera_names, kp_files)
+
+    # Check if frame alignment is required, if so look for alignment file in the video dir
+    alignment_file = join(vid_dir, "aligned_frame_numbers.csv")
+    if not exists(alignment_file):
+        print(f"Assuming all videos have the same number of frames. If this is not the case, please provide an alignment file at {alignment_file}.")
+        do_alignment = False
+    else:
+        align_df = pd.read_csv(alignment_file)  # cols are top, bottom, side1, ..., side4, trigger_number
+        max_n_frames = align_df.shape[0]
+        do_alignment = True
+
     # Prep the data
     all_uvs = []
-    for c in camera_names:
-        kp_file = join(vid_dir, session_name + f".{c}.keypoints.h5")
+    for cam, kp_file in zip(camera_names, kp_files):
         try:
             with h5py.File(kp_file, "r") as h5:
                 uvs = h5["uv"][()]
                 confs = h5["conf"][()]
-                uvs[confs < conf_threshold] = np.nan  # remove low confidence detections
-                all_uvs.append(uvs)
+
+                # Replace low confidence detections with nan
+                uvs[confs < conf_threshold] = np.nan  
+
+                # Align the frames if necessary, setting missing values to nan
+                if do_alignment:
+                    aligned_confs = np.nan * np.zeros((max_n_frames, confs.shape[1]))
+                    aligned_uvs = np.nan * np.zeros((max_n_frames, uvs.shape[1], uvs.shape[2]))
+                    align_vec = align_df[cam].values
+                    aligned_confs[~pd.isnull(align_vec), ...] = confs
+                    aligned_uvs[~pd.isnull(align_vec), ...] = uvs
+                    all_uvs.append(aligned_uvs)
+                else:
+                    all_uvs.append(uvs)
+
         except OSError:
             warn(
                 f"{kp_file} could not be loaded! Probably h5 file was not closed properly due to a job timing out."

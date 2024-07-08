@@ -92,7 +92,7 @@ def make_config(
         },
         "func_args": {"video_path": "{video_path}"},
         "func_kwargs": compression_kwargs_dict,
-        "output_info": {"expected_post_comp_max_kb_per_frame": 25, "output_name": output_name_suffix},
+        "output_info": {"expected_post_comp_max_kb_per_frame": 25, "output_name_suffix": output_name_suffix},
         "step_dependencies": step_dependencies,
         "pipeline_info": {
             "processing_level": "video",

@@ -212,8 +212,15 @@ def main(
         print(f"Output file {gimbal_out_file} already exists. Exiting.")
         return
 
-    # import pdb
-    # pdb.set_trace()
+    # Check if frame alignment is required, if so look for alignment file in the video dir
+    alignment_file = join(vid_dir, "aligned_frame_numbers.csv")
+    if not exists(alignment_file):
+        print(f"Assuming all videos have the same number of frames. If this is not the case, please provide an alignment file at {alignment_file}.")
+        do_alignment = False
+    else:
+        align_df = pd.read_csv(alignment_file)  # cols are top, bottom, side1, ..., side4, trigger_number
+        max_n_frames = align_df.shape[0]
+        do_alignment = True
 
     # # Check that a checkpoint file doesn't already exist
     # if os.path.exists(gimbal_out_file.replace("gimbal.npy", "gimbal_CHKPT.npy")) and not overwrite:
@@ -233,13 +240,25 @@ def main(
 
     observations = []
     confidence = []
-    for i, c in tqdm.tqdm(enumerate(camera_names)):
-        h5_file = find_files_from_pattern(vid_dir, f"*{c}*.keypoints.h5")
+    for i, cam in tqdm.tqdm(enumerate(camera_names)):
+        h5_file = find_files_from_pattern(vid_dir, f"*{cam}*.keypoints.h5")
         with h5py.File(h5_file) as h5:
             uvs = h5["uv"][()][:, use_bodyparts_ix][:, node_order]
+            confs = h5["conf"][()][:, use_bodyparts_ix][:, node_order]
             uvs = mcc.undistort_points(uvs, *all_intrinsics[i])
-            observations.append(uvs)
-            confidence.append(h5["conf"][()][:, use_bodyparts_ix][:, node_order])
+
+            # Align the frames if necessary, setting missing values to nan
+            if do_alignment:
+                aligned_confs = np.nan * np.zeros((max_n_frames, confs.shape[1]))
+                aligned_uvs = np.nan * np.zeros((max_n_frames, uvs.shape[1], uvs.shape[2]))
+                align_vec = align_df[cam].values
+                aligned_confs[~pd.isnull(align_vec), ...] = confs
+                aligned_uvs[~pd.isnull(align_vec), ...] = uvs
+                observations.append(aligned_uvs)
+                confidence.append(aligned_confs)
+            else:
+                observations.append(uvs)
+                confidence.append(confs)
 
     observations = np.stack(observations, axis=1)
     confidence = np.stack(confidence, axis=1)
