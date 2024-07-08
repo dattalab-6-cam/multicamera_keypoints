@@ -596,12 +596,15 @@ def update_running_jobs(project_dir, processing_step):
     # Get the list of running jobs
     running_jobs = parse_squeue_output(os.popen("squeue --me -o '%.18i %.9P %.50j %.8u %.2t %.10M %.9l %.6D %R'").read())
     
-    if processing_step in ["CENTERNET", "HRNET"]:
+    if config[processing_step]["pipeline_info"]["processing_level"] == "video":
         all_video_names = list(config["VID_INFO"].keys())    
         running_jobs = {k: v for k, v in running_jobs.items() if (processing_step in v['NAME'] and any([vid_name in v['NAME'] for vid_name in all_video_names]))}  # TODO: fix, rn this will detect HRNET.finetune as belonging to both "HRNET.finetune" and "HRNET" steps
-    elif processing_step in ["TRIANGULATION", "GIMBAL"]:
+    elif config[processing_step]["pipeline_info"]["processing_level"] == "session":
         all_session_names = list(config["SESSION_INFO"].keys())
         running_jobs = {k: v for k, v in running_jobs.items() if (processing_step in v['NAME'] and any([session_name in v['NAME'] for session_name in all_session_names]))}
+    elif config[processing_step]["pipeline_info"]["processing_level"] == "calibration":
+        all_calib_names = list(config["CALIBRATION_VIDEOS"].keys())
+        running_jobs = {k: v for k, v in running_jobs.items() if (processing_step in v['NAME'] and any([calib_name in v['NAME'] for calib_name in all_calib_names]))}
 
     # Update the config
     config[processing_step]["slurm_params"]["jobs_in_progress"] = running_jobs
