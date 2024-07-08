@@ -1,15 +1,16 @@
 import os
+import time
 from os.path import exists, join
 from pathlib import Path
 from textwrap import fill
-import time
 
 import yaml
 from o2_utils.selectors import find_files_from_pattern
 
+import multicamera_keypoints.v0 as mkv0
+
 # from multicamera_keypoints.file_utils import find_files_from_pattern
 from multicamera_keypoints.vid_utils import count_frames_cached
-import multicamera_keypoints.v0 as mkv0
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -24,8 +25,6 @@ config_comments = {
     "verbose": "whether to print progress messages during fitting",
     "keypoint_colormap": "colormap used for visualization; see `matplotlib.cm.get_cmap` for options",
 }
-
-config_name = "keypoint_config.yml"
 
 
 def _build_yaml(sections, comments):
@@ -62,7 +61,9 @@ def _build_yaml(sections, comments):
         text_blocks.append(f"\n\n{'#'}{centered_title}{'#'}")
         section_data = {title: data}  # Wrap the data under the title
         for key, value in section_data.items():
-            text = yaml.dump({key: value}, default_flow_style=False, sort_keys=False).strip()
+            text = yaml.dump(
+                {key: value}, default_flow_style=False, sort_keys=False
+            ).strip()
             # Add comments if they exist for the key
             if key in comments:
                 text = f"\n{'#'} {comments[key]}\n{text}"
@@ -70,43 +71,60 @@ def _build_yaml(sections, comments):
     return "\n".join(text_blocks)
 
 
-def add_videos_to_config(
-    project_dir, video_paths, overwrite=False
-):
-    
+def add_videos_to_config(project_dir, video_paths, overwrite=False):
     # Find the existing videos
     config = load_config(project_dir)
     existing_vid_info = config["VID_INFO"]
     existing_session_info = config["SESSION_INFO"]
-    
+
     # Get the processing steps in this config
-    VID_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in k and k["pipeline_info"]["processing_level"] == "video")]
-    SESSION_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in k and (k["pipeline_info"]["processing_level"] == "session" or k["pipeline_info"]["processing_level"] == "calibration"))]
+    VID_PROCESSING_STEPS = [
+        k
+        for k in config
+        if ("pipeline_info" in k and k["pipeline_info"]["processing_level"] == "video")
+    ]
+    SESSION_PROCESSING_STEPS = [
+        k
+        for k in config
+        if (
+            "pipeline_info" in k
+            and (
+                k["pipeline_info"]["processing_level"] == "session"
+                or k["pipeline_info"]["processing_level"] == "calibration"
+            )
+        )
+    ]
 
     # Remove videos that are already in the config from list of vids to add, if not overwriting
     if not overwrite:
-        video_paths = {v for v in video_paths if os.path.basename(v.split(".mp4")[0]) not in existing_vid_info}
+        video_paths = {
+            v
+            for v in video_paths
+            if os.path.basename(v.split(".mp4")[0]) not in existing_vid_info
+        }
 
     if len(video_paths) == 0:
         print("No new videos to add to config")
         return
 
     # Get info about the new videos
-    new_vid_info, new_session_info = _prepare_video_config(video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS)
+    new_vid_info, new_session_info = _prepare_video_config(
+        video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS
+    )
 
     # Update the config
     existing_vid_info.update(new_vid_info)
     existing_session_info.update(new_session_info)
     update_config(
-        project_dir, 
+        project_dir,
         {
             "VID_INFO": existing_vid_info,
             "SESSION_INFO": existing_session_info,
         },
-        verbose=False
+        verbose=False,
     )
 
-    # Report to user 
+    # Report to user
     print(f"Added {len(new_vid_info)} video(s) to config")
 
     return
@@ -115,7 +133,6 @@ def add_videos_to_config(
 def add_calibrations_to_config(
     project_dir, calibration_paths, board_size, square_size, overwrite=False
 ):
-    
     # Find the existing calibrations
     config = load_config(project_dir)
     existing_calib_info = config.get("CALIBRATION_VIDEOS", {})
@@ -124,10 +141,19 @@ def add_calibrations_to_config(
     # Remove calibrations that are already in the config if not overwriting
     if not overwrite:
         print(os.path.basename(calibration_paths[0].split(".mp4")[0]))
-        calibration_paths = {v for v in calibration_paths if os.path.basename(v.split(".mp4")[0]) not in existing_calib_info}
+        calibration_paths = {
+            v
+            for v in calibration_paths
+            if os.path.basename(v.split(".mp4")[0]) not in existing_calib_info
+        }
 
     # Get info about the new calibrations
-    _vid_info = _get_video_info([find_files_from_pattern(p, "*.top*.mp4", n_expected=1, error_behav="raise") for p in calibration_paths])
+    _vid_info = _get_video_info(
+        [
+            find_files_from_pattern(p, "*.top*.mp4", n_expected=1, error_behav="raise")
+            for p in calibration_paths
+        ]
+    )
     calib_info = {}
     for (calib_name, vid_info), calib_path in zip(_vid_info.items(), calibration_paths):
         short_name = calib_name.split(".")[0]
@@ -137,15 +163,25 @@ def add_calibrations_to_config(
 
     # Add key/val pairs specific to the calibration
     for vid_info in calib_info.values():
-        vid_info.update(dict(CALIBRATION_done=False, ok=False, board_size=board_size, square_size=square_size))
-    
+        vid_info.update(
+            dict(
+                CALIBRATION_done=False,
+                ok=False,
+                board_size=board_size,
+                square_size=square_size,
+            )
+        )
+
     existing_calib_info.update(calib_info)
-    update_config(project_dir, {"CALIBRATION_VIDEOS": existing_calib_info}, verbose=False)
+    update_config(
+        project_dir, {"CALIBRATION_VIDEOS": existing_calib_info}, verbose=False
+    )
     print(f"Added {len(calib_info)} calibration(s) to config")
     return
 
+
 def _get_video_info(video_paths):
-    """ Parse a list of video paths into a dictionary with required info about each video.
+    """Parse a list of video paths into a dictionary with required info about each video.
 
     Uses a cached version of count_frames to speed up the process in case of errors.
 
@@ -175,8 +211,8 @@ def _get_video_info(video_paths):
         video_name, _ = os.path.splitext(os.path.basename(video))
         session_name = video_name.split(".")[0]
         vid_info[video_name] = {
-            "video_path": os.path.abspath(video), 
-            "nframes": nframes, 
+            "video_path": os.path.abspath(video),
+            "nframes": nframes,
             "session_name": session_name,
             "kb_per_fr": kb_per_fr,
         }
@@ -184,7 +220,6 @@ def _get_video_info(video_paths):
 
 
 def _prepare_video_config(video_paths, vid_steps, session_steps):
-
     # Get info about the new videos (just frame num and path for now)
     new_vid_info = _get_video_info(video_paths)
 
@@ -199,12 +234,13 @@ def _prepare_video_config(video_paths, vid_steps, session_steps):
     new_session_info = {}
     for session, _dir in uq_pairings:
         new_session_info[session] = {
-            "videos": [], 
+            "videos": [],
+            "session_name": session, # redundant but useful
             "video_dir": _dir,
             "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
             **{f"{step}_done": False for step in session_steps},
         }
-    
+
     # Add list of videos to each session
     for vid_name in new_vid_info:
         session = new_vid_info[vid_name]["session_name"]
@@ -215,7 +251,9 @@ def _prepare_video_config(video_paths, vid_steps, session_steps):
         vids = new_session_info[session]["videos"]
         nframes = [new_vid_info[v]["nframes"] for v in vids]
         if len(set(nframes)) > 1:
-            print(f"Warning: Videos in session {session} have different lengths; cross-video frame alignment will be required.")
+            print(
+                f"Warning: Videos in session {session} have different lengths; cross-video frame alignment will be required."
+            )
             new_session_info[session]["alignment_required"] = True
         else:
             new_session_info[session]["alignment_required"] = False
@@ -224,7 +262,13 @@ def _prepare_video_config(video_paths, vid_steps, session_steps):
 
 
 def generate_config(
-    project_dir, video_paths, weights_path, gimbal_params_path, non_default_config=None, overwrite=False
+    project_dir,
+    video_paths,
+    weights_path,
+    gimbal_params_path,
+    non_default_config=None,
+    overwrite=False,
+    config_name="keypoint_config.yml",
 ):
     """Generate a `config.yml` file with project settings. Default settings
     will be used unless overriden by a keyword argument.
@@ -237,7 +281,7 @@ def generate_config(
             session1.top.mp4
             session1.side1.mp4
             ...
-        session2/  
+        session2/
             session2.top.mp4
             session2.side1.mp4
             ...
@@ -263,6 +307,9 @@ def generate_config(
     overwrite: bool, optional
         Whether to overwrite an existing config file.
 
+    config_name: str, optional
+        Name of the config file to generate.
+
     Returns
     -------
     None
@@ -274,7 +321,7 @@ def generate_config(
         raise ValueError(
             f"Config file already exists at {config_path}. Use `overwrite=True` to overwrite."
         )
-    
+
     # Generate info for the calibration processing
     sections = []
 
@@ -294,7 +341,9 @@ def generate_config(
     sections.append((step_name, step_config))
 
     # gimbal params
-    step_config, step_name = mkv0.gimbal_smoothing.make_config(PACKAGE_DIR, gimbal_params_path)
+    step_config, step_name = mkv0.gimbal_smoothing.make_config(
+        PACKAGE_DIR, gimbal_params_path
+    )
     sections.append((step_name, step_config))
 
     # Get video info
@@ -311,14 +360,14 @@ def generate_config(
     # all_session_info = {}
     # for session, _dir in uq_pairings:
     #     all_session_info[session] = {
-    #         "videos": [], 
+    #         "videos": [],
     #         "CALIBRATION_done": False,
     #         "TRIANGULATION_done": False,
     #         "GIMBAL_done": False,
     #         "video_dir": _dir,
     #         "ready_for_processing": False,  # whether all videos are done with centernet and hrnet
     #     }
-    
+
     # # Add list of videos to each session
     # for vid_name in all_vid_info:
     #     s = all_vid_info[vid_name]["session_name"]
@@ -344,17 +393,47 @@ def generate_config(
     # Add videos to the config!
     time.sleep(1)  # wait for file to be written
     config = load_config(project_dir)
-    VID_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in config[k] and config[k]["pipeline_info"]["processing_level"] == "video")]
-    SESSION_PROCESSING_STEPS = [k for k in config if ("pipeline_info" in config[k] and (config[k]["pipeline_info"]["processing_level"] == "session" or config[k]["pipeline_info"]["processing_level"] == "calibration"))]
-    all_vid_info, all_session_info = _prepare_video_config(video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS)
-    update_config(project_dir, {"VID_INFO": all_vid_info, "SESSION_INFO": all_session_info}, verbose=False)
+    VID_PROCESSING_STEPS = [
+        k
+        for k in config
+        if (
+            "pipeline_info" in config[k]
+            and config[k]["pipeline_info"]["processing_level"] == "video"
+        )
+    ]
+    SESSION_PROCESSING_STEPS = [
+        k
+        for k in config
+        if (
+            "pipeline_info" in config[k]
+            and (
+                config[k]["pipeline_info"]["processing_level"] == "session"
+                or config[k]["pipeline_info"]["processing_level"] == "calibration"
+            )
+        )
+    ]
+    all_vid_info, all_session_info = _prepare_video_config(
+        video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS
+    )
+    update_config(
+        project_dir,
+        {"VID_INFO": all_vid_info, "SESSION_INFO": all_session_info},
+        verbose=False,
+    )
 
     return
 
 
-def add_section_to_config(project_dir, section_name, section, processing_level="videos", overwrite=False):
-    """Manually add a new section to the config file. 
-    Useful for adding new processing steps to the config file, 
+def add_section_to_config(
+    project_dir,
+    section_name,
+    section,
+    processing_level="videos",
+    overwrite=False,
+    config_name="keypoint_config.yml",
+):
+    """Manually add a new section to the config file.
+    Useful for adding new processing steps to the config file,
     i.e. if you finetune a network and want to re-run from where you left off.
 
     Parameters
@@ -371,7 +450,7 @@ def add_section_to_config(project_dir, section_name, section, processing_level="
     processing_level: str, default="videos"
         Whether this processing step is done per video ("videos"), or per session ("sessions")
 
-        
+
     overwrite: bool, default=False
         Whether to overwrite an existing section with the same name.
     Returns
@@ -381,21 +460,24 @@ def add_section_to_config(project_dir, section_name, section, processing_level="
     config = load_config(project_dir)
     if section_name in config and not overwrite:
         raise ValueError(f"Section {section_name} already exists in the config file.")
-    
+
     config[section_name] = section
 
-    if processing_level == "videos":
+    if processing_level == "video":
         for vid_info in config["VID_INFO"].values():
             vid_info.update({f"{section_name}_done": False})
-    elif processing_level == "sessions":
+    elif processing_level == "session":
         for session_info in config["SESSION_INFO"].values():
             session_info.update({f"{section_name}_done": False})
+    else:
+        raise ValueError(f"processing_level must be 'video' or 'session' but got {processing_level}")
 
     save_config(project_dir, config)
     config_path = os.path.join(project_dir, config_name)
     check_config_validity(config_path)
 
     return
+
 
 def check_config_validity(config=None, project_dir=None):
     """Check that the config file is valid. This includes checking that
@@ -416,22 +498,27 @@ def check_config_validity(config=None, project_dir=None):
 
     if project_dir is not None and config is not None:
         raise ValueError("Only one of `config` and `project_dir` can be specified.")
-    
+
     if project_dir is not None:
         config = load_config(project_dir)
     elif isinstance(config, str):
         with open(config, "r") as stream:
             config = yaml.safe_load(stream)
     elif not isinstance(config, dict):
-        raise ValueError("config must be a dictionary or a path to a config file, or pass project_dir.")
+        raise ValueError(
+            "config must be a dictionary or a path to a config file, or pass project_dir."
+        )
 
     error_messages = []
 
     # Check that required paths exist
     top_level_base_names = ["CENTERNET", "HRNET", "TRIANGULATION", "GIMBAL"]
-    top_levels = [section_name for section_name in config.keys() if any([base_name in section_name for base_name in top_level_base_names])]
+    top_levels = [
+        section_name
+        for section_name in config.keys()
+        if any([base_name in section_name for base_name in top_level_base_names])
+    ]
     for top_level in top_levels:
-
         if "weights_path" in config[top_level]["func_args"]:
             check = config[top_level]["func_args"]["weights_path"]
             if not os.path.exists(check):
@@ -469,7 +556,7 @@ def check_config_validity(config=None, project_dir=None):
     return False
 
 
-def load_config(project_dir, check_if_valid=True):
+def load_config(project_dir, check_if_valid=True, config_name="keypoint_config.yml"):
     """Load a project config file.
 
     Parameters
@@ -515,7 +602,6 @@ def update_config(project_dir, new_config, verbose=True):
     None
     """
     update_msgs = []
-    
 
     def recursive_update(config, updates):
         for key, value in updates.items():
@@ -543,7 +629,7 @@ def update_config(project_dir, new_config, verbose=True):
     return
 
 
-def save_config(project_dir, config):
+def save_config(project_dir, config, config_name="keypoint_config.yml"):
     """Save a dictionary as a yaml file.
 
     Parameters
