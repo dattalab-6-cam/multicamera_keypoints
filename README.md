@@ -2,8 +2,8 @@
 A pipeline to go from 6-cam videos to usable keypoints.
 
 ## Install
-* git clone https://github.com/dattalab-6-cam/multicamera_keypoints.git`
-* cd multicamera_keypoints
+* `git clone https://github.com/dattalab-6-cam/multicamera_keypoints.git`
+* `cd multicamera_keypoints`
 * `conda env create --file ./environment.yml --name multicamera_keypoints`
 * `pip install -e .`
 
