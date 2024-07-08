@@ -1,10 +1,11 @@
 import os
-from os.path import join
+from os.path import join, exists
 
 import click
 import joblib
 import multicam_calibration as mcc
 import numpy as np
+import pandas as pd
 import tqdm.auto as tqdm
 from o2_utils.selectors import find_files_from_pattern
 # see also imports under main()
@@ -271,14 +272,17 @@ def main(
         ]
     )
 
+    print("Generating gimbal params")
     params = generate_gimbal_params(
         camera_matrices, fitted_params, 1e6, 1, step_size=0.2
     )
 
     # initialize positions
+    print("Generating initial positions")
     init_positions = generate_initial_positions(triangulation_positions)
 
     # calculate probabilies
+    print("Generating outlier probabilities")
     outlier_prob = generate_outlier_probs(
         confidence,
         outlier_prob_bounds=[1e-6, 1 - 1e-6],
@@ -294,10 +298,11 @@ def main(
         jr.PRNGKey(0), params, observations, outlier_prob, init_positions
     )
 
+    # run gimbal
+    print("Running gimbal iterations")
     num_iterations = 5000
     positions_sum = np.zeros_like(init_positions)
     tot = 0
-
     log_likelihood = []
     for itr in range(num_iterations):
         samples = gimbal.mcmc3d_full.step(
