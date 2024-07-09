@@ -81,16 +81,19 @@ def add_videos_to_config(project_dir, video_paths, overwrite=False):
     VID_PROCESSING_STEPS = [
         k
         for k in config
-        if ("pipeline_info" in k and k["pipeline_info"]["processing_level"] == "video")
+        if (
+            "pipeline_info" in config[k]
+            and config[k]["pipeline_info"]["processing_level"] == "video"
+        )
     ]
     SESSION_PROCESSING_STEPS = [
         k
         for k in config
         if (
-            "pipeline_info" in k
+            "pipeline_info" in config[k]
             and (
-                k["pipeline_info"]["processing_level"] == "session"
-                or k["pipeline_info"]["processing_level"] == "calibration"
+                config[k]["pipeline_info"]["processing_level"] == "session"
+                or config[k]["pipeline_info"]["processing_level"] == "calibration"
             )
         )
     ]
@@ -108,6 +111,8 @@ def add_videos_to_config(project_dir, video_paths, overwrite=False):
         return
 
     # Get info about the new videos
+    import pdb
+    pdb.set_trace()
     new_vid_info, new_session_info = _prepare_video_config(
         video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS
     )
