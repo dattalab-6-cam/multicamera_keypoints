@@ -11,23 +11,27 @@ dependencies:
   - pip
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu117
+    - -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
     - av
     - click
     - h5py
     - imageio-ffmpeg
     - ipywidgets
+    - jax[cuda11_cudnn82]==0.3.22
     - opencv-python
+    - optax == 0.1.5  # prevent dynamax from installing more recent versions of optax + chex, which require later JAX versions.
+    - chex == 0.1.6  # <-- this constraint is currently present in jax-moseq, and optax 0.1.6 requires chex > 0.1.8, so this should effectively match KPMS, for now. 
+    - PyYAML
     - timewizard
     - torch==2.0.1+cu117 
     - torchvision==0.15.2+cu117
     - tqdm
     - vidio
-    - PyYAML
     - git+ssh://git@github.com/dattalab-6-cam/multicam-calibration
     - git+ssh://git@github.com/dattalab-6-cam/o2-utils
     - git+ssh://git@github.com/calebweinreb/gimbal
     - git+ssh://git@github.com/calebweinreb/dynamax.git@parallel_hmm_posterior_sample
   - scikit-learn
   - scikit-image
-  - scipy
+  - scipy <= 1.12.0  # scipy.linag.tril is missing for scipy > v1.12.0, is an issue for these earlier jax versions
   - seaborn

@@ -16,6 +16,25 @@ Host github.com
 to your ~/.ssh/config file.
 Then run `chmod 600 ~/.ssh/config`.
 
+> [!IMPORTANT]
+> On O2, there are now lots of new L40S gpu's that don't work with cuda 11.7, which is the version we're currently using (the second-latest version on O2). We will try to upgrade to CUDA 12 soon, but this will work for now. As such, you will need to exclude any L40S from the GPUs that you use to run these jobs.
+> The following nodes are currently incompatible for this reason, or because they have too little vram: `compute-g-16-[175-177,194,197,254,255],compute-g-17-[166-171]`.
+> So you can use the following argument to sbatch or srun on O2 to exclude them: `sbatch --qos=gpuquad_qos -p gpu_quad,gpu -x "compute-g-16-[175-177,194,197,254,255],compute-g-17-[166-171]"`
+> You can pipe that into the batch scripts with the following lines in the notebooks:
+> ```python
+> sbatch_alias = 'sbatch --qos=gpuquad_qos -p gpu_quad,gpu -x "compute-g-16-[175-177,194,197,254,255],compute-g-17-[166-171]"'
+> mck.batch.prepare_batch(project_path, processing_step="GIMBAL", sbatch_alias=sbatch_alias)
+> ```
+
+> ### Check that the installation will work with your GPUs
+> You can check that the installation will work with your GPUs by running the following commands:
+* Grab a GPU job: `srun --qos=gpuquad_qos -p gpu_quad,gpu -x "compute-g-16-[175-177,194,197,254,255],compute-g-17-[166-171] -c 1 --mem=4G -t 10:00 --gres=gpu:1 --pty bash`"
+* Activate the conda environment: `conda activate multicamera_keypoints`
+* Run the following command: `python -c "import torch; print(torch.cuda.is_available())"`
+    * Output should be `True`
+* Run the following command: `python -c "import jax; print(jax.default_backend()); print(len(jax.device_put(jax.numpy.ones(1), device=jax.devices('gpu')[0])))"`
+    * Output should be `gpu` and `1`
+
 
 ## Overview
 
