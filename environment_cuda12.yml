@@ -1,0 +1,35 @@
+name: dataPy_torch
+dependencies:
+  - python=3.10
+  - ipython
+  - jupyter
+  - joblib
+  - matplotlib
+  - networkx
+  - numpy
+  - pandas
+  - pip
+  - pip:
+    - av
+    - click
+    - h5py
+    - imageio-ffmpeg
+    - ipywidgets
+    - jax[cuda12]
+    - opencv-python
+    - optax
+    - chex
+    - PyYAML
+    - timewizard
+    - torch
+    - torchvision
+    - tqdm
+    - vidio
+    # - git+ssh://git@github.com/dattalab-6-cam/multicam-calibration
+    # - git+ssh://git@github.com/dattalab-6-cam/o2-utils
+    # - git+ssh://git@github.com/calebweinreb/gimbal
+    # - git+ssh://git@github.com/calebweinreb/dynamax.git@parallel_hmm_posterior_sample
+  - scikit-learn
+  - scikit-image
+  - scipy
+  - seaborn
