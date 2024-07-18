@@ -11,19 +11,21 @@ dependencies:
   - pip
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu121
+    - -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
     - av
     - click
     - h5py
     - imageio-ffmpeg
     - ipywidgets
-    - jax[cuda12]<=0.4.14  # Hoping this limits to cuda 12.1: https://docs.nvidia.com/deeplearning/frameworks/jax-release-notes/rel-23-08.html
+    - jax[cuda12_cudnn89]==0.4.14  # Hoping this limits to cuda 12.1: https://docs.nvidia.com/deeplearning/frameworks/jax-release-notes/rel-23-08.html
+    - jaxlib==0.4.14+cuda12.cudnn89  
     - opencv-python
     - optax
     - chex
     - PyYAML
     - timewizard
-    - torch  # aiming for cuda 12.1
-    - torchvision
+    - torch==2.3.1+cu121  # aiming for cuda 12.1
+    - torchvision==0.18.1+cu121
     - tqdm
     - vidio
     # - git+ssh://git@github.com/dattalab-6-cam/multicam-calibration

@@ -111,8 +111,8 @@ def add_videos_to_config(project_dir, video_paths, overwrite=False):
         return
 
     # Get info about the new videos
-    import pdb
-    pdb.set_trace()
+    # import pdb
+    # pdb.set_trace()
     new_vid_info, new_session_info = _prepare_video_config(
         video_paths, VID_PROCESSING_STEPS, SESSION_PROCESSING_STEPS
     )

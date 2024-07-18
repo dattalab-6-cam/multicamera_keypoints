@@ -400,6 +400,7 @@ def make_config(
         },
         "func_kwargs": {
             "nframes": nframes_to_show,
+            "output_dir": "qc_videos",
         },
         "output_info": {
         },
