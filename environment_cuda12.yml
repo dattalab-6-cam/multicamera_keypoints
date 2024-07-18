@@ -16,7 +16,7 @@ dependencies:
     - h5py
     - imageio-ffmpeg
     - ipywidgets
-    - jax[cuda12]<=0.4.26
+    - jax[cuda12]<=0.4.14
     - opencv-python
     - optax
     - chex
