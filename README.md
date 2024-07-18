@@ -35,6 +35,10 @@ Then run `chmod 600 ~/.ssh/config`.
 * Run the following command: `python -c "import jax; print(jax.default_backend()); print(len(jax.device_put(jax.numpy.ones(1), device=jax.devices('gpu')[0])))"`
     * Output should be `gpu` and `1`
 
+> [!NOTE]
+> You can check JAX compatibility with various CUDA versions here: https://jax.readthedocs.io/en/latest/changelog.html. See the environment file here for details, but you probably want to be specifying specific versions, as the latest version doesn't always work with what we have on O2. For example, as of this writing, the CUDA drivers on the O2 GPU's are all 12.4, but the latest JAX version seems to require 12.5. (This isn't supported by the release notes, but I tried installing plain ol' jax[cuda12] and got an error about 12.4 vs 12.5 so...idrk.)
+
+
 
 ## Overview
 
