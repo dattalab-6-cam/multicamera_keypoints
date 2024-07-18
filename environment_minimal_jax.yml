@@ -1,0 +1,19 @@
+name: dataPy_torch
+dependencies:
+  - python=3.10
+  - ipython
+  - jupyter
+  - joblib
+  - matplotlib
+  - networkx
+  - numpy
+  - pandas
+  - pip
+  - pip:
+    - -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+    - ipywidgets
+    - jax[cuda12_cudnn89]==0.4.14  # Hoping this limits to cuda 12.1: https://docs.nvidia.com/deeplearning/frameworks/jax-release-notes/rel-23-08.html
+    - jaxlib==0.4.14+cuda12.cudnn89  
+    - opencv-python
+    - PyYAML
+    - vidio
