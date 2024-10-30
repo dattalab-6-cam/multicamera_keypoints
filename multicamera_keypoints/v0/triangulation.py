@@ -162,12 +162,12 @@ def main(vid_dir, calib_file, conf_threshold=0.25, output_name="robust_triangula
             print("Exiting.")
             return
 
-    all_uvs = np.array(all_uvs)
+    all_uvs = np.array(all_uvs)  # shape: (n_cams, n_frames, n_keypoints, 2)
 
     # Do the triangulation
     poses = []
-    for i in tqdm.tqdm(range(len(all_uvs[0]))):
-        pts = mcc.triangulate(all_uvs[:, i], all_extrinsics, all_intrinsics)
+    for i in tqdm.tqdm(range(len(all_uvs[0]))):  # ie for each frame
+        pts = mcc.triangulate(all_uvs[:, i], all_extrinsics, all_intrinsics)  # pass in uvs of shape (n_cams, n_keypoints, 2)
         poses.append(pts)
 
     # Save the results
