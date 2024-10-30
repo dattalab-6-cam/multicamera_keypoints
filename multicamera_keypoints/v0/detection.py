@@ -17,6 +17,12 @@ from multicamera_keypoints.io import load_config
 from multicamera_keypoints.v0.hrnet import HRNet
 from multicamera_keypoints.vid_utils import crop_image
 
+try:
+    import torch
+except ImportError:
+    print("torch not imported in detection.py")
+    torch = None
+
 bodyparts_hrnet_ordering = [
     "tail_tip",
     "tail_base",
@@ -387,7 +393,7 @@ def to_numpy(tensor):
 
 
 def parse_heatmap(heatmap, downsample=4):
-    B, C, H, W = heatmap.shape
+    B, C, H, W = heatmap.shape  # batch, channels, height, width
     flat_heatmap = heatmap.reshape((B, C, -1))
     maxima = torch.argmax(flat_heatmap, dim=-1)
 
@@ -414,7 +420,7 @@ def load_model(weights_filepath, use_cpu=False):
     return model, nof_joints
 
 
-def apply_model_to_image(model, im, centroid, clahe, use_cpu=False):
+def apply_model_to_image(model, im, centroid, clahe, use_cpu=False, also_return_intermediates=False, downsample=2):
     with torch.no_grad():
         im = crop_image(im, centroid, 512)
         im = clahe.apply(im[:, :, 0])
@@ -423,10 +429,13 @@ def apply_model_to_image(model, im, centroid, clahe, use_cpu=False):
             y_pred = model(torch.Tensor(x))
         else:
             y_pred = model(torch.Tensor(x).to("cuda"))
-        uv, conf = parse_heatmap(y_pred, downsample=2)
+        uv, conf = parse_heatmap(y_pred, downsample=downsample)
     uv = uv[0] + centroid[None, None] - 256
 
-    return uv, conf[0]
+    if not also_return_intermediates:
+        return uv, conf[0]  # usual case
+    elif also_return_intermediates:
+        return uv, conf[0], y_pred[0], im
 
 
 def save_arrays_as_h5(save_path, array_dict):
@@ -581,7 +590,7 @@ def main(vid_path, weights_path, output_name="keypoints.h5", save_every=1000, ov
             print(f"Saved checkpoint at frame {i}...")
     
     # Save the final results
-    array_dict = dict(uv=all_uvs, conf=all_confs)
+    array_dict = dict(uv=all_uvs, conf=all_confs)  # all_uvs has shape: (n_frames, n_kps, 2)
     save_arrays_as_h5(save_path, array_dict)
 
     # Remove the now-redundant checkpoint file
